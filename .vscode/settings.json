@@ -1,0 +1,21 @@
+{
+  "python.analysis.extraPaths": ["blender"],
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.stubPath": "./typings",
+  "python.analysis.ignore": ["**/node_modules/**", "**/.git/**"],
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingImports": "warning",
+    "reportMissingModuleSource": "warning"
+  },
+  "files.associations": {
+    "*.py": "python"
+  },
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": false,
+  "python.linting.flake8Enabled": true,
+  "python.linting.flake8Args": ["--ignore=E501,W503,F401"],
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.completeFunctionParens": true
+}

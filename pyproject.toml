@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lego-sorter"
+version = "1.0.0"
+description = "Blender-based simulation for sorting LEGO parts"
+authors = [
+    {name = "LEGO Sorter Project"}
+]
+dependencies = [
+    "fake-bpy-module-latest"
+]
+requires-python = ">=3.8"
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "flake8",
+    "mypy"
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "bpy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "mathutils.*"
+ignore_missing_imports = true
