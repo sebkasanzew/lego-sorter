@@ -1,5 +1,5 @@
 {
-  "python.analysis.extraPaths": ["blender"],
+  "python.analysis.extraPaths": ["blender", "./utils"],
   "python.analysis.typeCheckingMode": "basic",
   "python.analysis.diagnosticMode": "workspace",
   "python.analysis.stubPath": "./typings",

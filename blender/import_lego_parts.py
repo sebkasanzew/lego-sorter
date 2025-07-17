@@ -168,7 +168,7 @@ def import_lego_parts():
 
     # Create a collection for all imported parts
     collection_name = "lego_parts"
-    new_collection = bpy.data.collections.new(collection_name)
+    new_collection = bpy.data.collections.new(collection_name) # type: ignore
     bpy.context.scene.collection.children.link(new_collection)
 
     imported_count = 0
