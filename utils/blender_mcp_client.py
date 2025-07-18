@@ -74,10 +74,28 @@ class BlenderMCPClient:
                 print(f"✅ Successfully executed {description}!")
                 result_data = result.get('result', 'No result message')
                 if result_data:
-                    print(f"Result: {result_data}")
+                    # Handle nested result structure from Blender MCP
+                    if isinstance(result_data, dict) and 'result' in result_data:
+                        # Extract the actual result string
+                        actual_result = result_data['result']
+                        if isinstance(actual_result, str):
+                            formatted_result = actual_result.replace('\\n', '\n')
+                            print(f"Result:\n{formatted_result}")
+                        else:
+                            print(f"Result: {actual_result}")
+                    elif isinstance(result_data, str):
+                        formatted_result = result_data.replace('\\n', '\n')
+                        print(f"Result:\n{formatted_result}")
+                    else:
+                        print(f"Result: {result_data}")
             else:
                 print(f"❌ Failed to execute {description}")
-                print(f"Error: {result.get('message', 'Unknown error')}")
+                error_message = result.get('message', 'Unknown error')
+                if isinstance(error_message, str):
+                    formatted_error = error_message.replace('\\n', '\n')
+                    print(f"Error: {formatted_error}")
+                else:
+                    print(f"Error: {error_message}")
                 
         except Exception as e:
             print(f"❌ Error executing {description}: {e}")

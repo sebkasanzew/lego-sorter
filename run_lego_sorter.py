@@ -70,8 +70,18 @@ def main():
         print(f"❌ Parts script not found: {parts_script}")
         return
     
+    # 3. Setup physics animation
+    print("\n3️⃣ Setting up physics simulation...")
+    physics_script = os.path.join(blender_dir, "animate_lego_physics.py")
+    if os.path.exists(physics_script):
+        client.execute_script_file(physics_script, "Physics Animation")
+    else:
+        print(f"❌ Physics script not found: {physics_script}")
+        return
+    
     print("\n🎉 LEGO sorter simulation completed!")
     print("Check your Blender scene for the imported parts and sorting bucket.")
+    print("🎬 Physics simulation is now running - parts will fall under gravity!")
 
 if __name__ == "__main__":
     main()

@@ -34,6 +34,8 @@ lego-sorter/
 │   └── blender_mcp_client.py      # MCP client for Blender communication
 ├── docs/                       # Documentation
 │   └── TESTING_GUIDE.md           # Testing guide
+├── tests/                      # Test scripts
+│   └── test_physics.py            # Physics simulation tests
 ├── run_lego_sorter.py             # Main script to run the simulation
 └── README.md                   # This file
 ```

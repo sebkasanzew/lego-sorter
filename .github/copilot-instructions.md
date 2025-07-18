@@ -19,13 +19,14 @@ This is a Blender-based simulation for a LEGO sorting machine that uses the Mode
 - **Scene Management**: `clear_scene.py` - Always run first to reset state
 - **Object Creation**: `create_sorting_bucket.py` - Boolean operations for hollow geometry
 - **Asset Import**: `import_lego_parts.py` - LDraw file import with vertical arrangement
+- **Physics Animation**: `animate_lego_physics.py` - Realistic gravity simulation and collision detection
 - **Pattern**: Scripts use `main()` function and auto-execute when imported (no `if __name__ == "__main__"` checks)
 
 ### 3. Workflow Orchestration (`run_lego_sorter.py`)
 
-- **Standard Pipeline**: clear → create bucket → import parts
+- **Standard Pipeline**: clear → create bucket → import parts → setup physics
 - **Error Handling**: Checks file existence before execution
-- **User Feedback**: Emoji-based progress indicators (🧱, 🔍, 🎯, 1️⃣, 2️⃣, 🎉)
+- **User Feedback**: Emoji-based progress indicators (🧱, 🔍, 🎯, 1️⃣, 2️⃣, 3️⃣, 🎉)
 - **Path Management**: Uses `sys.path.insert()` to add utils directory dynamically
 
 ## Critical Developer Workflows
@@ -96,6 +97,7 @@ python utils/blender_mcp_client.py
 - **Collections**: Use `bpy.data.collections.new()` and link to scene
 - **Geometry**: bmesh operations for complex mesh modifications
 - **Boolean Operations**: Create hollow objects using DIFFERENCE modifier
+- **Physics**: Rigid body simulation with realistic LEGO properties (mass: 2g, friction: 0.9)
 
 ### External Dependencies
 
