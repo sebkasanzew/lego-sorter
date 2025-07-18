@@ -12,19 +12,21 @@ This is a Blender-based simulation for a LEGO sorting machine that uses the Mode
 - Use `BlenderMCPClient` class for remote script execution
 - Always test connection with `test_connection()` before operations
 - Scripts must be executed via `execute_script_file()` or `execute_code()`
+- **Socket Communication**: JSON commands over TCP with 8KB response buffer
 
 ### 2. Blender Script Structure (`blender/` directory)
 
 - **Scene Management**: `clear_scene.py` - Always run first to reset state
 - **Object Creation**: `create_sorting_bucket.py` - Boolean operations for hollow geometry
 - **Asset Import**: `import_lego_parts.py` - LDraw file import with vertical arrangement
-- **Pattern**: Scripts use `main()` function and auto-execute when imported
+- **Pattern**: Scripts use `main()` function and auto-execute when imported (no `if __name__ == "__main__"` checks)
 
 ### 3. Workflow Orchestration (`run_lego_sorter.py`)
 
 - **Standard Pipeline**: clear → create bucket → import parts
 - **Error Handling**: Checks file existence before execution
-- **User Feedback**: Emoji-based progress indicators
+- **User Feedback**: Emoji-based progress indicators (🧱, 🔍, 🎯, 1️⃣, 2️⃣, 🎉)
+- **Path Management**: Uses `sys.path.insert()` to add utils directory dynamically
 
 ## Critical Developer Workflows
 
@@ -47,27 +49,36 @@ python utils/blender_mcp_client.py
 2. Verify connection on `localhost:9876` before any script execution
 3. **Never execute bpy commands without MCP connection**
 
+### VSCode Configuration
+
+- **Type Hints**: `fake-bpy-module-latest` provides bpy API stubs
+- **Path Configuration**: `.vscode/settings.json` adds `blender/` and `utils/` to analysis paths
+- **Linting**: Flake8 enabled with E501, W503, F401 ignored for Blender compatibility
+
 ## Project-Specific Conventions
 
 ### Blender Script Patterns
 
-- **Auto-execution**: All scripts end with `main()` call - no conditional `if __name__`
+- **Auto-execution**: All scripts end with `main()` call - no conditional `if __name__ == "__main__"`
 - **Collection Management**: Objects organized in named collections (`"bucket"`, `"lego_parts"`)
 - **Error Handling**: Extensive null checks for `bpy.context.active_object`
 - **Geometry Creation**: Boolean operations for complex shapes (see bucket creation)
+- **Function Signatures**: Use type hints with `Optional[Any]` and `Tuple` for Blender objects
 
 ### File Organization
 
 - `blender/` - Blender-specific scripts (auto-executable)
 - `utils/` - MCP client utilities
 - `docs/` - Testing and setup guides
+- `typings/` - Custom type stubs for bpy and mathutils
 - **Pattern**: Scripts reference each other via relative paths from project root
 
 ### LDraw Integration
 
 - **Path Convention**: `/Applications/Studio 2.0/ldraw/parts/` (macOS default)
-- **Common Parts List**: Curated selection of most-used LEGO parts in `import_lego_parts.py`
+- **Common Parts List**: 70+ curated LEGO parts by popularity in `import_lego_parts.py`
 - **Vertical Arrangement**: Parts stacked with calculated spacing for physics simulation
+- **Part Naming**: Uses official LDraw part numbers (e.g., "4073", "3023", "3024")
 
 ## Integration Points
 
@@ -76,6 +87,7 @@ python utils/blender_mcp_client.py
 - **Socket-based**: JSON commands over TCP connection
 - **Command Structure**: `{"type": "execute_code", "params": {"code": "..."}}`
 - **Response Format**: `{"status": "success/error", "result": "...", "message": "..."}`
+- **Buffer Size**: 8KB response buffer for large script outputs
 
 ### Blender API Usage
 
@@ -83,12 +95,14 @@ python utils/blender_mcp_client.py
 - **Object Access**: Always check `bpy.context.active_object` for null
 - **Collections**: Use `bpy.data.collections.new()` and link to scene
 - **Geometry**: bmesh operations for complex mesh modifications
+- **Boolean Operations**: Create hollow objects using DIFFERENCE modifier
 
 ### External Dependencies
 
 - **LDraw Library**: Required for LEGO part geometry
 - **BlenderMCP Addon**: Must be enabled in Blender
 - **fake-bpy-module**: Provides type hints for development
+- **Development Tools**: Black, Flake8, MyPy for code quality
 
 ## Key Files for Understanding
 
