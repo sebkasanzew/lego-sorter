@@ -164,7 +164,7 @@ def import_lego_parts():
 
     print(f"📦 Found {len(filtered_dat_files)} LEGO parts to import")
 
-    z_start_offset = 0.1
+    z_start_offset = 1.1  # Updated for new positioning (1.0 + 0.1 above bucket)
     z_position = z_start_offset
     failed_files = set()
 

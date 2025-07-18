@@ -184,8 +184,8 @@ def randomize_starting_positions(lego_parts: List[Any]) -> None:
 
 def create_physics_ground_plane() -> Optional[Any]:
     """Create an invisible ground plane to catch falling parts"""
-    # Create a large plane below the scene
-    bpy.ops.mesh.primitive_plane_add(size=5, location=(0, 0, -1))  # type: ignore
+    # Create a large plane at the new ground level
+    bpy.ops.mesh.primitive_plane_add(size=5, location=(0, 0, 0))  # type: ignore
     ground_plane = bpy.context.active_object
     
     if ground_plane:
@@ -229,15 +229,8 @@ def start_physics_simulation() -> None:
 
 def setup_collision_collections() -> None:
     """Setup collision collections for better organization"""
-    # Create collections for different physics objects
-    physics_collections = ["physics_static", "physics_dynamic"]
-    
-    for coll_name in physics_collections:
-        if not cast(Any, bpy.data.collections).get(coll_name):
-            new_collection = cast(Any, bpy.data.collections).new(coll_name)
-            bpy.context.scene.collection.children.link(new_collection)
-    
-    print("✅ Created physics organization collections")
+    # No longer needed - using functional collections instead
+    print("ℹ️  Using simplified functional organization (bucket, conveyor_belt, lego_parts)")
 
 def main() -> None:
     """Main function to setup physics simulation for LEGO parts"""

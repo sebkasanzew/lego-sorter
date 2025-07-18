@@ -61,8 +61,17 @@ def main():
         print(f"❌ Bucket script not found: {bucket_script}")
         return
     
-    # 2. Import LEGO parts
-    print("\n2️⃣ Importing LEGO parts...")
+    # 2. Create conveyor belt system
+    print("\n2️⃣ Creating conveyor belt system...")
+    conveyor_script = os.path.join(blender_dir, "create_conveyor_belt.py")
+    if os.path.exists(conveyor_script):
+        client.execute_script_file(conveyor_script, "Conveyor Belt System")
+    else:
+        print(f"❌ Conveyor belt script not found: {conveyor_script}")
+        return
+
+    # 3. Import LEGO parts
+    print("\n3️⃣ Importing LEGO parts...")
     parts_script = os.path.join(blender_dir, "import_lego_parts.py")
     if os.path.exists(parts_script):
         client.execute_script_file(parts_script, "LEGO Parts")
@@ -70,8 +79,8 @@ def main():
         print(f"❌ Parts script not found: {parts_script}")
         return
     
-    # 3. Setup physics animation
-    print("\n3️⃣ Setting up physics simulation...")
+    # 4. Setup physics animation
+    print("\n4️⃣ Setting up physics simulation...")
     physics_script = os.path.join(blender_dir, "animate_lego_physics.py")
     if os.path.exists(physics_script):
         client.execute_script_file(physics_script, "Physics Animation")
@@ -80,8 +89,11 @@ def main():
         return
     
     print("\n🎉 LEGO sorter simulation completed!")
-    print("Check your Blender scene for the imported parts and sorting bucket.")
-    print("🎬 Physics simulation is now running - parts will fall under gravity!")
+    print("Check your Blender scene for the complete sorting system:")
+    print("  • Sorting bucket with collection hole")
+    print("  • Conveyor belt system with supports")
+    print("  • LEGO parts positioned for sorting")
+    print("🎬 Physics simulation is now running - parts will flow from bucket to conveyor!")
 
 if __name__ == "__main__":
     main()
