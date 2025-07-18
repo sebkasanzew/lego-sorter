@@ -18,16 +18,18 @@ This is a Blender-based simulation for a LEGO sorting machine that uses the Mode
 
 - **Scene Management**: `clear_scene.py` - Always run first to reset state
 - **Object Creation**: `create_sorting_bucket.py` - Boolean operations for hollow geometry
+- **Conveyor System**: `create_conveyor_belt.py` - Inclined belt with friction-based transport
 - **Asset Import**: `import_lego_parts.py` - LDraw file import with vertical arrangement
 - **Physics Animation**: `animate_lego_physics.py` - Realistic gravity simulation and collision detection
 - **Pattern**: Scripts use `main()` function and auto-execute when imported (no `if __name__ == "__main__"` checks)
 
 ### 3. Workflow Orchestration (`run_lego_sorter.py`)
 
-- **Standard Pipeline**: clear → create bucket → import parts → setup physics
+- **Standard Pipeline**: clear → create bucket → create conveyor → import parts → setup physics
 - **Error Handling**: Checks file existence before execution
 - **User Feedback**: Emoji-based progress indicators (🧱, 🔍, 🎯, 1️⃣, 2️⃣, 3️⃣, 🎉)
 - **Path Management**: Uses `sys.path.insert()` to add utils directory dynamically
+- **Code-Driven Scene**: Complete scene recreation from Python scripts only
 
 ## Critical Developer Workflows
 
@@ -81,6 +83,115 @@ python utils/blender_mcp_client.py
 - **Vertical Arrangement**: Parts stacked with calculated spacing for physics simulation
 - **Part Naming**: Uses official LDraw part numbers (e.g., "4073", "3023", "3024")
 
+## Complete Workflow & Code-Driven Scene Configuration
+
+### Philosophy: Zero Binary Dependencies
+
+The entire Blender scene is generated through Python scripts - **no .blend files are saved or required**. This ensures:
+
+- **Reproducibility**: Anyone can recreate the exact scene from code
+- **Version Control**: All scene changes are trackable through Git
+- **Modularity**: Individual components can be developed and tested independently
+- **Automation**: Complete CI/CD pipeline possible for scene generation
+
+### Standard Execution Workflow
+
+1. **Scene Reset** (`clear_scene.py`)
+
+   - Removes all mesh objects, lights, cameras
+   - Clears all collections except default scene collection
+   - Resets physics world and animation data
+   - Provides clean slate for scene generation
+
+2. **Geometry Creation** (Various scripts)
+
+   - `create_sorting_bucket.py`: Main collection bucket with hollow interior
+   - `create_conveyor_belt.py`: Inclined transport system with friction physics
+   - Each script handles its own collection management and object naming
+
+3. **Asset Import** (`import_lego_parts.py`)
+
+   - Imports real LEGO parts from LDraw library
+   - Arranges parts vertically for realistic drop physics
+   - Assigns physics properties (mass: 2g, friction: 0.9)
+
+4. **Physics & Animation Setup** (`animate_lego_physics.py`)
+   - Configures rigid body simulation
+   - Sets up realistic collision detection
+   - Animates conveyor belt movement through material displacement
+
+### Script Execution Patterns
+
+**Sequential Execution**: Scripts run in specific order through `run_lego_sorter.py`
+
+```python
+# Standard pipeline
+scripts = [
+    "clear_scene.py",
+    "create_sorting_bucket.py",
+    "create_conveyor_belt.py",
+    "import_lego_parts.py",
+    "animate_lego_physics.py"
+]
+```
+
+**Independent Execution**: Each script can run standalone for development/testing
+
+```bash
+# Test individual components
+python -c "from utils.blender_mcp_client import BlenderMCPClient; client = BlenderMCPClient(); client.execute_script_file('blender/create_conveyor_belt.py')"
+```
+
+**MCP Remote Execution**: All scripts execute through MCP bridge for remote Blender control
+
+### Scene Configuration Philosophy
+
+**Declarative Geometry**: Objects defined through code parameters, not manual modeling
+
+- Bucket dimensions, conveyor length/angle, part spacing all configurable
+- Boolean operations create complex shapes (hollow bucket via DIFFERENCE modifier)
+- Physics properties embedded in object creation functions
+
+**Collection-Based Organization**: Logical grouping prevents object conflicts
+
+- `"bucket"`: Sorting container and related geometry
+- `"conveyor_belt"`: Transport system components and supports
+- `"lego_parts"`: Imported LEGO pieces with physics
+- Each script manages its own collection lifecycle
+
+**Material & Animation Integration**: Visual and physics properties unified
+
+- Conveyor belt materials include animated texture displacement
+- LEGO parts receive realistic PBR materials during import
+- Animation keyframes set programmatically for belt movement
+
+### Configuration Management
+
+**Parameter Centralization**: Key values configurable at script level
+
+```python
+# In create_conveyor_belt.py
+CONVEYOR_LENGTH = 1.5      # Belt length in Blender units
+CONVEYOR_ANGLE = 0.15      # Incline angle in radians
+BELT_FRICTION = 0.8        # Physics friction coefficient
+```
+
+**LDraw Path Configuration**: External asset paths centralized
+
+```python
+# In import_lego_parts.py
+LDRAW_PARTS_PATH = "/Applications/Studio 2.0/ldraw/parts/"
+COMMON_PARTS = ["3001", "3003", "3004", ...]  # Popular LEGO parts
+```
+
+**Physics Constants**: Realistic LEGO simulation parameters
+
+```python
+LEGO_MASS = 0.002         # 2 grams per typical LEGO brick
+LEGO_FRICTION = 0.9       # High friction for realistic stacking
+GRAVITY_SCALE = 9.81      # Standard Earth gravity
+```
+
 ## Integration Points
 
 ### MCP Communication Protocol
@@ -108,25 +219,32 @@ python utils/blender_mcp_client.py
 
 ## Key Files for Understanding
 
-- `run_lego_sorter.py` - Main orchestration logic
-- `utils/blender_mcp_client.py` - MCP communication patterns
+- `run_lego_sorter.py` - Main orchestration logic and workflow execution
+- `utils/blender_mcp_client.py` - MCP communication patterns and remote script execution
+- `blender/clear_scene.py` - Scene reset and cleanup procedures
 - `blender/create_sorting_bucket.py` - Complex geometry creation with boolean operations
-- `blender/import_lego_parts.py` - Asset import and arrangement logic
+- `blender/create_conveyor_belt.py` - Transport system with physics and animation
+- `blender/import_lego_parts.py` - Asset import and physics configuration logic
+- `blender/animate_lego_physics.py` - Physics simulation and animation setup
 - `README.md` - Complete project context and real-world inspiration
 
 ## Testing & Debugging
 
 ### Quick Test Methods
 
-1. **Direct Blender**: Copy script to Blender's script editor and run
-2. **MCP Test**: Use `python utils/blender_mcp_client.py` to verify connection
-3. **Individual Scripts**: Execute single scripts via MCP client
+1. **Complete Workflow**: Run `python run_lego_sorter.py` for full scene generation
+2. **Direct Blender**: Copy script to Blender's script editor and run for immediate testing
+3. **MCP Test**: Use `python utils/blender_mcp_client.py` to verify connection
+4. **Individual Scripts**: Execute single scripts via MCP client for component testing
+5. **Scene Validation**: Use `clear_scene.py` followed by specific script to test in isolation
 
 ### Common Issues
 
 - **MCP Connection**: Verify Blender addon is connected before script execution
 - **LDraw Path**: Adjust path in `import_lego_parts.py` if parts not found
 - **Collection Cleanup**: Run `clear_scene.py` if objects appear in wrong collections
+- **Script Order**: Always run `clear_scene.py` first to ensure clean state
+- **Physics Setup**: Ensure conveyor and bucket are created before physics animation
 
 ## Physics Simulation Context
 

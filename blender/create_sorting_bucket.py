@@ -23,7 +23,7 @@ def create_bucket() -> Tuple[Optional[Any], None]:
     wall_thickness = 0.01  # 1cm thick walls
 
     # Create the outer bucket (frustum shape)
-    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 1.0))  # type: ignore
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.15))  # type: ignore
     outer_bucket = bpy.context.active_object
     if outer_bucket:
         outer_bucket.name = "Outer_Bucket_Temp"
@@ -63,7 +63,7 @@ def create_bucket() -> Tuple[Optional[Any], None]:
     bpy.ops.object.mode_set(mode='OBJECT')  # type: ignore
     
     # Create inner bucket (slightly smaller for hollowing)
-    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 1.0 + wall_thickness))  # type: ignore
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.15 + wall_thickness))  # type: ignore
     inner_bucket = bpy.context.active_object
     if inner_bucket:
         inner_bucket.name = "Inner_Bucket_Temp"

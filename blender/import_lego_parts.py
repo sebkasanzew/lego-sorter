@@ -164,7 +164,7 @@ def import_lego_parts():
 
     print(f"📦 Found {len(filtered_dat_files)} LEGO parts to import")
 
-    z_start_offset = 1.1  # Updated for new positioning (1.0 + 0.1 above bucket)
+    z_start_offset = 0.25  # Position parts inside the bucket (bucket is at z=0.15)
     z_position = z_start_offset
     failed_files = set()
 
@@ -215,11 +215,18 @@ def import_lego_parts():
             total_height = max_z - min_z
             center_z = (min_z + max_z) / 2
 
+            # Add randomization to distribute parts inside bucket
+            import random
+            x_offset = random.uniform(-0.08, 0.08)  # Random x position within bucket
+            y_offset = random.uniform(-0.08, 0.08)  # Random y position within bucket
+
             for obj in imported_objects:
+                obj.location.x = x_offset
+                obj.location.y = y_offset
                 obj.location.z = z_position - center_z
 
-            # Update spacing for next part
-            spacing_multiplier = 3
+            # Update spacing for next part (smaller spacing since they're distributed)
+            spacing_multiplier = 1.5
             z_position += total_height * spacing_multiplier
 
             # Deselect all objects
