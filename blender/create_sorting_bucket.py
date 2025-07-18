@@ -12,79 +12,122 @@ Usage:
 """
 
 import bpy
+from typing import Optional, Tuple, Any
 
-def create_bucket():
-    """Create a hollow bucket with a base for sorting LEGO parts"""
-    # Bucket dimensions in meters (24cm diameter)
-    bucket_radius = 0.12
-    bucket_height = 0.18  # Reasonable height, can be changed later
-    cone_inner_radius_top = 0.11  # Slightly smaller than outer
-    cone_inner_radius_bottom = 0.03  # Small exit for conveyor
+def create_bucket() -> Tuple[Optional[Any], None]:
+    """Create a hollow bucket with a base for sorting LEGO parts using boolean operations"""
+    # Bucket dimensions in meters (24cm x 24cm square)
+    bucket_size_top = 0.24  # 24cm square at top
+    bucket_size_bottom = 0.06  # 6cm square at bottom (funnel exit)
+    bucket_height = 0.20  # Reasonable height
+    wall_thickness = 0.01  # 1cm thick walls
 
-    # Create outer cylinder (bucket wall)
-    bpy.ops.mesh.primitive_cylinder_add(radius=bucket_radius, depth=bucket_height, location=(0, 0, 0))
+    # Create the outer bucket (frustum shape)
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))  # type: ignore
     outer_bucket = bpy.context.active_object
-    if outer_bucket is not None:
-        outer_bucket.name = "Outer Bucket"
-
-    # Create inner cone (for conic inside) using cylinder with different radii
+    if outer_bucket:
+        outer_bucket.name = "Outer_Bucket_Temp"
+    
+    # Enter edit mode and modify to frustum shape
+    bpy.ops.object.mode_set(mode='EDIT')  # type: ignore
+    bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
+    
+    # Get bmesh representation for precise editing
     import bmesh
-    bpy.ops.mesh.primitive_cylinder_add(
-        radius=cone_inner_radius_top,
-        depth=bucket_height * 0.95,
-        location=(0, 0, -bucket_height * 0.025)
-    )
-    inner_cone = bpy.context.active_object
-    if inner_cone is not None:
-        inner_cone.name = "Inner Cone"
-        # Use bmesh to scale the bottom face
-        if inner_cone.type == 'MESH':
-            mesh = inner_cone.data # type: ignore
-            import bmesh
-            bm = bmesh.new()
-            bm.from_mesh(mesh)
-            # Find bottom face (lowest z)
-            min_z = min([v.co.z for v in bm.verts])
-            bottom_faces = [f for f in bm.faces if all(v.co.z == min_z for v in f.verts)]
-            if bottom_faces:
-                bmesh.ops.scale(
-                    bm,
-                    vec=(cone_inner_radius_bottom/cone_inner_radius_top, cone_inner_radius_bottom/cone_inner_radius_top, 1),
-                    verts=[v for f in bottom_faces for v in f.verts]
-                )
-            bm.to_mesh(mesh)
-            bm.free()
-
-    # Boolean difference: hollow out the bucket with the cone
-    if outer_bucket is not None and inner_cone is not None:
-        bool_modifier = outer_bucket.modifiers.new(name="Bucket", type='BOOLEAN')  # type: ignore
-        bool_modifier.operation = 'DIFFERENCE'
-        bool_modifier.object = inner_cone
-
-    if outer_bucket is not None:
+    if outer_bucket and hasattr(outer_bucket, 'data') and outer_bucket.data:  # type: ignore
+        bm = bmesh.from_edit_mesh(outer_bucket.data)  # type: ignore
+        
+        # Select and scale top face (highest Z)
+        bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
+        for face in bm.faces:
+            if all(v.co.z > 0 for v in face.verts):
+                face.select = True
+        
+        bmesh.update_edit_mesh(outer_bucket.data)  # type: ignore
+        bpy.ops.transform.resize(value=(bucket_size_top, bucket_size_top, 1))  # type: ignore
+        
+        # Select and scale bottom face (lowest Z)
+        bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
+        bm = bmesh.from_edit_mesh(outer_bucket.data)  # type: ignore
+        for face in bm.faces:
+            if all(v.co.z < 0 for v in face.verts):
+                face.select = True
+        
+        bmesh.update_edit_mesh(outer_bucket.data)  # type: ignore
+        bpy.ops.transform.resize(value=(bucket_size_bottom, bucket_size_bottom, 1))  # type: ignore
+        
+        # Scale the whole bucket to proper height
+        bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
+        bpy.ops.transform.resize(value=(1, 1, bucket_height))  # type: ignore
+    
+    bpy.ops.object.mode_set(mode='OBJECT')  # type: ignore
+    
+    # Create inner bucket (slightly smaller for hollowing)
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, wall_thickness))  # type: ignore
+    inner_bucket = bpy.context.active_object
+    if inner_bucket:
+        inner_bucket.name = "Inner_Bucket_Temp"
+    
+    # Make inner bucket smaller and shaped
+    bpy.ops.object.mode_set(mode='EDIT')  # type: ignore
+    bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
+    
+    # Get bmesh for inner bucket
+    if inner_bucket and hasattr(inner_bucket, 'data') and inner_bucket.data:  # type: ignore
+        bm = bmesh.from_edit_mesh(inner_bucket.data)  # type: ignore
+        
+        # Select and scale top face
+        bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
+        for face in bm.faces:
+            if all(v.co.z > 0 for v in face.verts):
+                face.select = True
+        
+        bmesh.update_edit_mesh(inner_bucket.data)  # type: ignore
+        bpy.ops.transform.resize(value=(bucket_size_top - wall_thickness, bucket_size_top - wall_thickness, 1))  # type: ignore
+        
+        # Select and scale bottom face
+        bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
+        bm = bmesh.from_edit_mesh(inner_bucket.data)  # type: ignore
+        for face in bm.faces:
+            if all(v.co.z < 0 for v in face.verts):
+                face.select = True
+        
+        bmesh.update_edit_mesh(inner_bucket.data)  # type: ignore
+        bpy.ops.transform.resize(value=(bucket_size_bottom - wall_thickness, bucket_size_bottom - wall_thickness, 1))  # type: ignore
+        
+        # Scale height (slightly shorter than outer)
+        bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
+        bpy.ops.transform.resize(value=(1, 1, bucket_height - wall_thickness))  # type: ignore
+    
+    bpy.ops.object.mode_set(mode='OBJECT')  # type: ignore
+    
+    # Use boolean difference to hollow out the bucket
+    if outer_bucket and inner_bucket:
+        outer_bucket.select_set(True)
         bpy.context.view_layer.objects.active = outer_bucket
+        
+        # Add boolean modifier
+        bool_mod = outer_bucket.modifiers.new(name="Boolean", type='BOOLEAN')  # type: ignore
+        bool_mod.operation = 'DIFFERENCE'  # type: ignore
+        bool_mod.object = inner_bucket  # type: ignore
+        
+        # Apply the modifier
+        bpy.ops.object.modifier_apply(modifier=bool_mod.name)  # type: ignore
+        
+        # Remove the inner bucket (no longer needed)
+        bpy.data.objects.remove(inner_bucket)  # type: ignore
+        
+        # Rename to final name
+        outer_bucket.name = "Sorting_Bucket"
+        
+        print(f"✅ Created hollow bucket with funnel shape using boolean operations")
+        
+        # Return the bucket object (no separate base needed)
+        return outer_bucket, None
+    
+    return None, None
 
-    # Apply the boolean modifier
-    if outer_bucket is not None:
-        bpy.ops.object.modifier_apply(modifier="Bucket")
-
-    # Remove the inner cone object
-    if inner_cone is not None:
-        bpy.data.objects.remove(inner_cone)
-
-    # Create the base (circle, filled)
-    bpy.ops.mesh.primitive_circle_add(radius=bucket_radius, enter_editmode=False, align='WORLD', location=(0, 0, -bucket_height/2), rotation=(0, 0, 0))
-    base = bpy.context.active_object
-    if base is not None:
-        base.name = "Bucket Base"
-        bpy.context.view_layer.objects.active = base
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.fill()
-        bpy.ops.object.mode_set(mode='OBJECT')
-    # Return both objects so they can be added to the collection before joining
-    return outer_bucket, base
-
-def main():
+def main() -> None:
     """Main function to create the sorting bucket"""
     # Remove existing bucket objects and collections
     bucket_collection = bpy.data.collections.get("bucket")  # type: ignore
@@ -98,31 +141,22 @@ def main():
         bpy.data.collections.remove(bucket_collection)
 
     # Create the bucket
-    outer_bucket, base = create_bucket()
-    # Create a new collection and add both objects to it
+    bucket, base = create_bucket()
+    # Create a new collection and add the bucket to it
     bucket_collection = None
     if hasattr(bpy.data, "collections") and hasattr(bpy.data.collections, "new"):
         bucket_collection = bpy.data.collections.new("bucket")  # type: ignore
         # Link the new collection to the scene if not already linked
         if hasattr(bpy.context.scene, "collection") and hasattr(bpy.context.scene.collection, "children"):
             bpy.context.scene.collection.children.link(bucket_collection)
-    # Move both objects to the bucket collection
-    for obj in [outer_bucket, base]:
-        if obj is not None and bucket_collection is not None:
-            for coll in list(obj.users_collection):  # type: ignore
-                coll.objects.unlink(obj)
-            bucket_collection.objects.link(obj)
-    # Now join the base with the bucket
-    joined_bucket = outer_bucket
-    if outer_bucket is not None and base is not None:
-        bpy.context.view_layer.objects.active = outer_bucket
-        base.select_set(True)
-        bpy.ops.object.join()
-        joined_bucket = bpy.context.active_object
-    if joined_bucket is not None:
-        joined_bucket.name = "Sorting_Bucket"
-    if joined_bucket is not None:
-        print(f"✅ Created sorting bucket: {joined_bucket.name}")
+    # Move the bucket to the bucket collection
+    if bucket is not None and bucket_collection is not None:
+        for coll in list(bucket.users_collection):  # type: ignore
+            coll.objects.unlink(bucket)
+        bucket_collection.objects.link(bucket)
+    
+    if bucket is not None:
+        print(f"✅ Created sorting bucket: {bucket.name}")
 
 # Always run main when script is executed
 main()
