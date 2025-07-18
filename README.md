@@ -1,5 +1,24 @@
 # LEGO Sorter - Blender Simulation
 
+## Project Goal
+
+The goal of this project is to create a model of a machine capable of sorting LEGO bricks by shape and color. The machine performs this task in several steps:
+
+1. **Collection**: Random LEGO bricks are collected in a bucket. The user can drop unsorted LEGO into this bucket.
+2. **Conveyor Belt**: A conveyor belt transports the LEGO bricks from the bucket up to the actual sorting part of the machine.
+3. **Separation**: On the conveyor belt, the parts are spread out so that at the end, LEGO parts are transported one by one with a margin between them.
+4. **Identification**: In the sorter section, each part falls one by one into a tube. Inside the tube, one or more cameras point at a spot where the LEGO part falls through. The camera is connected to a Coral device, which detects the shape and color of the part and identifies it quickly.
+5. **Sorting**: At the end of the tube, the LEGO part is identified. The tube splits into multiple tubes, and the machine moves the identified LEGO part to its destined tube.
+6. **Output**: The multiple tube outlets lead to different buckets (two or more).
+
+In the end, the collection of random LEGO parts is sorted into two or more buckets/categories.
+
+For a real-world demonstration of a sorting machine using AI and Coral, see this YouTube video:
+[Sorting Marshmallows with AI: Using Coral + Teachable Machine](https://www.youtube.com/watch?v=ydzJPeeMiMI)
+
+Full documentation for the sorter project featured in the video can be found here:
+[Coral Teachable Sorter Documentation](https://coral.ai/projects/teachable-sorter/)
+
 A Blender-based simulation for sorting LEGO parts using the Model Context Protocol (MCP) server.
 
 ## Project Structure
@@ -31,12 +50,6 @@ lego-sorter/
 - **`blender/clear_scene.py`** - Clears the Blender scene (removes all objects and collections)
 - **`blender/create_sorting_bucket.py`** - Creates a hollow bucket for sorting LEGO parts
 - **`blender/import_lego_parts.py`** - Imports common LEGO parts from LDraw files
-
-### Legacy Files (for reference)
-
-- **`create_bucket.py`** - Original bucket creation script
-- **`import_lego_parts.py`** - Original LEGO parts import script
-- **`test_blender_mcp.py`** - Original MCP test script
 
 ## Requirements
 
