@@ -136,6 +136,8 @@ COMMON_LEGO_PARTS = [
     "30162",   # Brick, Modified 1 x 2 with Studs on 2 Sides
 ]
 
+COMMON_LEGO_PARTS_SLICE = COMMON_LEGO_PARTS[:10]  # Use only the first 10 for fast import
+
 def import_lego_parts():
     """Import LEGO parts from LDraw files and arrange them vertically"""
     # Check if the folder exists
@@ -150,8 +152,8 @@ def import_lego_parts():
         print("❌ No .dat files found in the LDraw parts folder.")
         return
 
-    # Filter dat files based on the common LEGO parts list
-    filtered_dat_files = [f for f in dat_files if os.path.splitext(f)[0] in COMMON_LEGO_PARTS]
+    # Filter dat files based on the sliced common LEGO parts list
+    filtered_dat_files = [f for f in dat_files if os.path.splitext(f)[0] in COMMON_LEGO_PARTS_SLICE]
 
     # Limit to the first 100 filtered files to avoid overwhelming the scene
     filtered_dat_files = filtered_dat_files[:100]

@@ -15,37 +15,65 @@ import bpy
 
 def create_bucket():
     """Create a hollow bucket with a base for sorting LEGO parts"""
-    # Create outer cylinder
-    bpy.ops.mesh.primitive_cylinder_add(radius=2, depth=5, location=(0, 0, 0))
+    # Bucket dimensions in meters (24cm diameter)
+    bucket_radius = 0.12
+    bucket_height = 0.18  # Reasonable height, can be changed later
+    cone_inner_radius_top = 0.11  # Slightly smaller than outer
+    cone_inner_radius_bottom = 0.03  # Small exit for conveyor
+
+    # Create outer cylinder (bucket wall)
+    bpy.ops.mesh.primitive_cylinder_add(radius=bucket_radius, depth=bucket_height, location=(0, 0, 0))
     outer_bucket = bpy.context.active_object
     if outer_bucket is not None:
         outer_bucket.name = "Outer Bucket"
 
-    # Create inner cylinder (to hollow out the bucket)
-    bpy.ops.mesh.primitive_cylinder_add(radius=1.8, depth=6, location=(0, 0, 0))
-    inner_bucket = bpy.context.active_object
-    if inner_bucket is not None:
-        inner_bucket.name = "Inner Bucket"
+    # Create inner cone (for conic inside) using cylinder with different radii
+    import bmesh
+    bpy.ops.mesh.primitive_cylinder_add(
+        radius=cone_inner_radius_top,
+        depth=bucket_height * 0.95,
+        location=(0, 0, -bucket_height * 0.025)
+    )
+    inner_cone = bpy.context.active_object
+    if inner_cone is not None:
+        inner_cone.name = "Inner Cone"
+        # Use bmesh to scale the bottom face
+        if inner_cone.type == 'MESH':
+            mesh = inner_cone.data # type: ignore
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            # Find bottom face (lowest z)
+            min_z = min([v.co.z for v in bm.verts])
+            bottom_faces = [f for f in bm.faces if all(v.co.z == min_z for v in f.verts)]
+            if bottom_faces:
+                bmesh.ops.scale(
+                    bm,
+                    vec=(cone_inner_radius_bottom/cone_inner_radius_top, cone_inner_radius_bottom/cone_inner_radius_top, 1),
+                    verts=[v for f in bottom_faces for v in f.verts]
+                )
+            bm.to_mesh(mesh)
+            bm.free()
 
-    # Add boolean modifier to outer cylinder
-    if outer_bucket is not None and inner_bucket is not None:
+    # Boolean difference: hollow out the bucket with the cone
+    if outer_bucket is not None and inner_cone is not None:
         bool_modifier = outer_bucket.modifiers.new(name="Bucket", type='BOOLEAN')  # type: ignore
         bool_modifier.operation = 'DIFFERENCE'
-        bool_modifier.object = inner_bucket
+        bool_modifier.object = inner_cone
 
     if outer_bucket is not None:
         bpy.context.view_layer.objects.active = outer_bucket
 
-    # Apply the boolean modifier, this makes the subtraction permanent
+    # Apply the boolean modifier
     if outer_bucket is not None:
         bpy.ops.object.modifier_apply(modifier="Bucket")
-    
-    # Remove the inner cylinder object after applying the modifier
-    if inner_bucket is not None:
-        bpy.data.objects.remove(inner_bucket)
 
-    # Create the base of the bucket
-    bpy.ops.mesh.primitive_circle_add(radius=2, enter_editmode=False, align='WORLD', location=(0, 0, -2.5), rotation=(0, 0, 0))
+    # Remove the inner cone object
+    if inner_cone is not None:
+        bpy.data.objects.remove(inner_cone)
+
+    # Create the base (circle, filled)
+    bpy.ops.mesh.primitive_circle_add(radius=bucket_radius, enter_editmode=False, align='WORLD', location=(0, 0, -bucket_height/2), rotation=(0, 0, 0))
     base = bpy.context.active_object
     if base is not None:
         base.name = "Bucket Base"
