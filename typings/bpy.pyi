@@ -3,7 +3,7 @@ Stub file for bpy module to provide type hints for VSCode.
 This file provides basic type definitions for the Blender Python API.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Iterable, Iterator
 
 class BlenderObject:
     name: str
@@ -11,21 +11,89 @@ class BlenderObject:
     location: Any
     bound_box: Any
     matrix_world: Any
+    rotation_euler: Any
+    modifiers: 'BlenderModifiers'
+    rigid_body: Any
+    data: Any
     
     def select_set(self, state: bool) -> None: ...
 
+class BlenderModifier:
+    name: str
+    type: str
+    # Common Boolean modifier attributes used in repo
+    operation: str
+    object: Optional[BlenderObject]
+    def __getattr__(self, name: str) -> Any: ...
+    def __setattr__(self, name: str, value: Any) -> None: ...
+
+
+class BlenderModifiers:
+    def new(self, name: str, type: str) -> BlenderModifier: ...
+    def __getitem__(self, key: str) -> BlenderModifier: ...
+    def __iter__(self) -> Iterator[BlenderModifier]: ...
+
+
+class BlenderCollectionObjects:
+    def link(self, obj: BlenderObject) -> None: ...
+    def unlink(self, obj: BlenderObject) -> None: ...
+    def __iter__(self) -> Iterator[BlenderObject]: ...
+    def __contains__(self, item: Any) -> bool: ...
+
+
 class BlenderCollection:
     name: str
-    objects: List[BlenderObject]
+    objects: BlenderCollectionObjects
     
     def link(self, obj: BlenderObject) -> None: ...
     def unlink(self, obj: BlenderObject) -> None: ...
 
-class BlenderData:
-    objects: List[BlenderObject]
-    collections: List[BlenderCollection]
-    
+class LightData:
+    name: str
+    energy: float
+    color: Any
+    shape: str
+    size: float
+
+
+class World:
+    name: str
+    use_nodes: bool
+    node_tree: Any
+
+
+class DataObjects:
+    """Collection-like accessor for data.objects"""
+    def new(self, name: str, data: Any = None) -> BlenderObject: ...
+    def get(self, name: str) -> Optional[BlenderObject]: ...
     def remove(self, obj: BlenderObject, do_unlink: bool = False) -> None: ...
+    def __iter__(self) -> Iterator[BlenderObject]: ...
+
+
+class DataCollections:
+    def new(self, name: str) -> BlenderCollection: ...
+    def get(self, name: str) -> Optional[BlenderCollection]: ...
+    def remove(self, col: BlenderCollection) -> None: ...
+    def __iter__(self) -> Iterator[BlenderCollection]: ...
+
+
+class DataLights:
+    def new(self, name: str, type: str = "POINT") -> LightData: ...
+    def get(self, name: str) -> Optional[LightData]: ...
+    def __iter__(self) -> Iterator[LightData]: ...
+
+
+class DataWorlds:
+    def new(self, name: str) -> World: ...
+    def get(self, name: str) -> Optional[World]: ...
+    def __iter__(self) -> Iterator[World]: ...
+
+
+class BlenderData:
+    objects: DataObjects
+    collections: DataCollections
+    lights: DataLights
+    worlds: DataWorlds
 
 class BlenderContext:
     object: Optional[BlenderObject]

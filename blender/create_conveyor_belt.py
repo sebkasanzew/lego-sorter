@@ -18,9 +18,10 @@ def clear_existing_conveyor() -> None:
 def create_conveyor_belt() -> Optional[Any]:
     """Create a conveyor belt mesh positioned to transport LEGO parts from bucket up to sorting section."""
     # Create conveyor belt mesh - starts at bucket hole, goes up at slight angle
+    # Position the conveyor to start at the bucket hole location (0.12, 0, 0.12)
     bpy.ops.mesh.primitive_cube_add(  # type: ignore
         size=1,
-        location=(0.4, 0, 0.08)  # Start near bucket at ground level
+        location=(0.6, 0, 0.18)  # Start near bucket hole, positioned higher
     )
     
     conveyor = bpy.context.active_object
@@ -31,8 +32,8 @@ def create_conveyor_belt() -> Optional[Any]:
     conveyor.name = "Conveyor_Belt"
     
     # Scale to create belt proportions (long, narrow, thin)
-    conveyor.scale = (1.5, 0.3, 0.02)  # type: ignore # 1.5 units long, narrow, very thin
-    conveyor.rotation_euler = (0, 0.15, 0)  # type: ignore # Gentle 8-degree incline
+    conveyor.scale = (1.2, 0.25, 0.02)  # type: ignore # Slightly shorter and narrower
+    conveyor.rotation_euler = (0, 0.12, 0)  # type: ignore # More gentle 7-degree incline
     
     # Apply transforms
     bpy.ops.object.transform_apply(
@@ -64,35 +65,41 @@ def add_conveyor_details(conveyor: Optional[Any]) -> None:
     print("✓ Added conveyor belt details")
 
 
-def create_conveyor_supports() -> None:
-    """Create support structures for the conveyor belt."""
-    # Create support legs at appropriate heights for gentle inclined belt
-    support_positions = [
-        (0.15, 0, 0.06),   # Lower support near bucket
-        (0.7, 0, 0.12),    # Higher support at far end
-    ]
-    
-    for i, (x_pos, y_pos, z_pos) in enumerate(support_positions):
-        # Create support that reaches from ground to belt
-        support_height = z_pos * 2  # Double the height to reach the belt
-        
-        bpy.ops.mesh.primitive_cylinder_add(
-            radius=0.02,
-            depth=support_height,
-            location=(x_pos, y_pos, support_height/2)  # Position so bottom touches ground
-        )
-        
-        support = bpy.context.active_object
-        if support:
-            support.name = f"Conveyor_Support_{i+1}"
-            
-            # Add to conveyor collection
-            conveyor_collection = bpy.data.collections.get("conveyor_belt")  # type: ignore
-            if conveyor_collection and support.name not in conveyor_collection.objects:
-                conveyor_collection.objects.link(support)
-                bpy.context.scene.collection.objects.unlink(support)
-    
-    print("✓ Created conveyor belt supports")
+def create_conveyor_supports(conveyor: Optional[Any]) -> None:
+    """Create side supports that stop below the belt to avoid clipping."""
+    if not conveyor:
+        return
+
+    # Compute dimensions and placement
+    length = conveyor.dimensions.x
+    width = conveyor.dimensions.y
+    thickness = conveyor.dimensions.z
+
+    center = conveyor.location
+    x_positions = [center.x - length * 0.35, center.x + length * 0.35]
+    y_offset = width * 0.5 + 0.05
+    top_z = center.z - thickness * 0.5 - 0.01  # stop 1cm below underside
+    depth = max(top_z - 0.0, 0.05)
+
+    names = []
+    for i, x_pos in enumerate(x_positions, start=1):
+        for side, y_pos in (("L", center.y - y_offset), ("R", center.y + y_offset)):
+            bpy.ops.mesh.primitive_cylinder_add(
+                radius=0.015,
+                depth=depth,
+                location=(x_pos, y_pos, depth / 2.0)
+            )
+            support = bpy.context.active_object
+            if support:
+                support.name = f"Conveyor_Support_{i}{side}"
+                names.append(support.name)
+                # Add to conveyor collection
+                conveyor_collection = bpy.data.collections.get("conveyor_belt")  # type: ignore
+                if conveyor_collection and all(o.name != support.name for o in conveyor_collection.objects):
+                    conveyor_collection.objects.link(support)
+                    bpy.context.scene.collection.objects.unlink(support)
+
+    print("✓ Created conveyor belt supports:", ", ".join(names))
 
 
 def create_bucket_hole() -> None:
@@ -105,9 +112,9 @@ def create_bucket_hole() -> None:
     
     # Create a cylinder to cut the hole
     bpy.ops.mesh.primitive_cylinder_add(
-        radius=0.04,  # Hole radius
+        radius=0.05,  # Slightly larger hole radius
         depth=0.2,    # Depth to ensure it cuts through wall
-        location=(0.12, 0, 0.12)  # Position on bucket side, aligned with bucket height
+        location=(0.12, 0, 0.16)  # Position on bucket side, slightly higher
     )
     
     hole_cutter = bpy.context.active_object
@@ -128,8 +135,8 @@ def create_bucket_hole() -> None:
     
     # Add boolean modifier to bucket
     boolean_mod = bucket.modifiers.new(name="Bucket_Hole", type='BOOLEAN')
-    boolean_mod.operation = 'DIFFERENCE'
-    boolean_mod.object = hole_cutter
+    boolean_mod.operation = 'DIFFERENCE'  # type: ignore[attr-defined]
+    boolean_mod.object = hole_cutter      # type: ignore[attr-defined]
     
     # Apply the modifier
     bpy.context.view_layer.objects.active = bucket
@@ -141,8 +148,8 @@ def create_bucket_hole() -> None:
     print("✓ Created hole in bucket side wall")
 
 
-def setup_conveyor_physics(conveyor: Optional[Any]) -> None:
-    """Setup physics properties for the conveyor belt using friction-based movement."""
+def setup_cloth_conveyor_physics(conveyor: Optional[Any]) -> None:
+    """Setup cloth simulation for realistic friction-based conveyor belt movement."""
     if not conveyor:
         return
     
@@ -150,16 +157,70 @@ def setup_conveyor_physics(conveyor: Optional[Any]) -> None:
     bpy.context.view_layer.objects.active = conveyor
     conveyor.select_set(True)
     
-    # Add rigid body physics
+    # Enter edit mode to add more geometry for cloth simulation
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
+    bpy.ops.mesh.subdivide(number_cuts=12)  # type: ignore # More subdivisions for better cloth
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    # Add cloth physics modifier
+    cloth_mod = conveyor.modifiers.new(name="Cloth", type='CLOTH')
+    cloth_settings = cloth_mod.settings
+    
+    # Configure cloth settings for conveyor belt behavior
+    cloth_settings.quality = 8
+    cloth_settings.mass = 0.3
+    cloth_settings.tension_stiffness = 80
+    cloth_settings.compression_stiffness = 80
+    cloth_settings.shear_stiffness = 80
+    cloth_settings.bending_stiffness = 20
+    cloth_settings.tension_damping = 25
+    cloth_settings.compression_damping = 25
+    cloth_settings.shear_damping = 25
+    cloth_settings.air_damping = 1
+    
+    # Set collision settings for interaction with LEGO parts
+    collision_settings = cloth_mod.collision_settings
+    collision_settings.use_collision = True
+    collision_settings.collision_quality = 4
+    collision_settings.distance_min = 0.001
+    collision_settings.friction = 15  # High friction to grip LEGO parts
+    
+    # Pin edges to simulate belt being held by rollers
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
+    
+    # Select edge vertices to pin (belt attachment points)
+    bpy.ops.mesh.select_mode(type='VERT')  # type: ignore
+    
+    # Pin the edges where the belt would be attached to rollers
+    vertex_group = conveyor.vertex_groups.new(name="Pinned")
+    
+    # Return to object mode
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    # Pin group assignment (edges of the belt)
+    cloth_settings.vertex_group_mass = vertex_group.name
+    
+    print("✓ Setup cloth-based conveyor physics with high friction")
+
+
+def setup_conveyor_physics(conveyor: Optional[Any]) -> None:
+    """Setup physics properties for the conveyor belt as a passive rigid body surface with friction."""
+    if not conveyor:
+        return
+
+    bpy.context.view_layer.objects.active = conveyor
+    conveyor.select_set(True)
+
+    # Add passive rigid body so LEGO parts (active) interact with the belt
     bpy.ops.rigidbody.object_add(type='PASSIVE')  # type: ignore
-    
-    # Set physics properties for friction-based conveyor movement
-    if conveyor.rigid_body:
-        conveyor.rigid_body.type = 'PASSIVE'  # Static object
-        conveyor.rigid_body.friction = 0.8    # High friction to grip parts
-        conveyor.rigid_body.restitution = 0.05 # Very low bounce
-    
-    print("✓ Setup conveyor belt physics (friction-based)")
+    conveyor.rigid_body.collision_shape = 'MESH'  # type: ignore
+    conveyor.rigid_body.friction = 1.2  # type: ignore  # grippy belt
+    conveyor.rigid_body.restitution = 0.1  # type: ignore
+    conveyor.rigid_body.use_deactivation = True  # type: ignore
+
+    print("✓ Setup conveyor belt passive rigid body for part transport")
 
 
 def create_conveyor_collection() -> Optional[Any]:
@@ -170,6 +231,74 @@ def create_conveyor_collection() -> Optional[Any]:
     
     print("✓ Created conveyor belt collection")
     return conveyor_collection
+
+
+def create_conveyor_rollers(conveyor: Optional[Any]) -> None:
+    """Create rotating rollers at each end of the conveyor to drive the belt."""
+    if not conveyor:
+        return
+    
+    # Compute local axes and world-space dimensions for robust placement
+    mw = conveyor.matrix_world
+    axes = mw.to_3x3()
+    x_axis = (axes @ Vector((1, 0, 0))).normalized()  # along belt
+    y_axis = (axes @ Vector((0, 1, 0))).normalized()  # across belt (roller axis)
+    z_axis = (axes @ Vector((0, 0, 1))).normalized()  # belt normal
+
+    length = conveyor.dimensions.x
+    width = conveyor.dimensions.y
+    thickness = conveyor.dimensions.z
+
+    margin_end = 0.05  # 5cm from each end
+    roller_radius = 0.02
+    clearance = 0.003
+    roller_depth = width + 0.02
+
+    end1_center = conveyor.location - x_axis * (length * 0.5 - margin_end) - z_axis * (thickness * 0.5 + roller_radius + clearance)
+    end2_center = conveyor.location + x_axis * (length * 0.5 - margin_end) - z_axis * (thickness * 0.5 + roller_radius + clearance)
+
+    for i, center in enumerate((end1_center, end2_center), start=1):
+        bpy.ops.mesh.primitive_cylinder_add(
+            radius=roller_radius,
+            depth=roller_depth,
+            location=center
+        )
+        
+        roller = bpy.context.active_object
+        if roller:
+            roller.name = f"Conveyor_Roller_{i}"
+            # Align cylinder axis along Y (belt width); for small pitch, X-90 works fine visually
+            roller.rotation_euler = (1.5708, 0, 0)  # type: ignore
+            
+            # Apply rotation
+            bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+            
+            # Add rotation animation to drive the belt
+            roller.rotation_euler = (0, 0, 0)  # type: ignore
+            roller.keyframe_insert(data_path="rotation_euler", index=2, frame=1)  # type: ignore[attr-defined]
+            
+            # Set end keyframe for continuous rotation
+            roller.rotation_euler = (0, 0, 6.28319)  # type: ignore # Full rotation (2π radians)
+            roller.keyframe_insert(data_path="rotation_euler", index=2, frame=120)  # type: ignore[attr-defined]
+            
+            # Set linear interpolation and make it cyclic
+            if getattr(roller, 'animation_data', None) and roller.animation_data.action:  # type: ignore[attr-defined]
+                for fcurve in roller.animation_data.action.fcurves:  # type: ignore[attr-defined]
+                    for keyframe in fcurve.keyframe_points:
+                        keyframe.interpolation = 'LINEAR'
+                    # Add cycles modifier for continuous rotation
+                    cycles_mod = fcurve.modifiers.new(type='CYCLES')
+                    cycles_mod.mode_before = 'REPEAT'
+                    cycles_mod.mode_after = 'REPEAT'
+            
+            # Add to conveyor collection
+            conveyor_collection = bpy.data.collections.get("conveyor_belt")  # type: ignore
+            if conveyor_collection and all(o.name != roller.name for o in conveyor_collection.objects):
+                conveyor_collection.objects.link(roller)
+                bpy.context.scene.collection.objects.unlink(roller)
+    
+    print("✓ Created animated conveyor rollers")
+    # (Removed duplicate collection creation)
 
 
 def setup_conveyor_animation(conveyor: Optional[Any]) -> None:
@@ -288,20 +417,22 @@ def main() -> None:
         conveyor_collection.objects.link(conveyor)
         bpy.context.scene.collection.objects.unlink(conveyor)
         
-        # Add details and supports
-        add_conveyor_details(conveyor)
-        create_conveyor_supports()
-        
-        # Setup physics and animation
-        setup_conveyor_physics(conveyor)
-        setup_conveyor_animation(conveyor)
-        setup_friction_based_conveyor(conveyor)
+    # Add details and supports
+    add_conveyor_details(conveyor)
+    create_conveyor_supports(conveyor)
+    create_conveyor_rollers(conveyor)
+
+    # Setup physics and animation - use collision physics for better part interaction
+    setup_conveyor_physics(conveyor)
+    setup_conveyor_animation(conveyor)
+    setup_friction_based_conveyor(conveyor)
     
     # Create hole in bucket
     create_bucket_hole()
     
     print("🎉 Conveyor belt system created successfully!")
-    print("🔄 LEGO parts will move via friction on the inclined belt")
+    print("🔄 Using enhanced collision physics for part transport")
+    print("✓ Conveyor properly positioned to connect with bucket hole")
     print("▶️ Press Space to start physics simulation")
 
 
