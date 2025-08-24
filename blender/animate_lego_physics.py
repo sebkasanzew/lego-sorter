@@ -15,6 +15,49 @@ Usage:
 import bpy  # type: ignore
 from typing import Optional, List, Any, cast
 
+
+def ensure_material(name: str, color_rgba=(1.0, 1.0, 1.0, 1.0), roughness: float = 0.4, metallic: float = 0.0) -> Any:
+    """Get or create a simple Principled BSDF material with the given color."""
+    data = cast(Any, bpy.data)
+    mat = data.materials.get(name)
+    if mat:
+        return mat
+    mat = data.materials.new(name=name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+    bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+    bsdf.location = (0, 0)
+    bsdf.inputs["Base Color"].default_value = color_rgba
+    bsdf.inputs["Roughness"].default_value = roughness
+    bsdf.inputs["Metallic"].default_value = metallic
+    out = nodes.new("ShaderNodeOutputMaterial")
+    out.location = (200, 0)
+    links.new(bsdf.outputs[0], out.inputs[0])
+    return mat
+
+
+def assign_material(obj: Any, mat: Any) -> None:
+    """Assign a material to an object (replace first slot or append)."""
+    try:
+        if not obj.data:
+            return
+        mats = obj.data.materials
+        if len(mats) == 0:
+            mats.append(mat)
+        else:
+            mats[0] = mat
+    except Exception:
+        pass
+
+
+def hsv_to_rgba(h: float, s: float, v: float) -> tuple[float, float, float, float]:
+    import colorsys
+
+    r, g, b = colorsys.hsv_to_rgb(h % 1.0, s, v)
+    return (r, g, b, 1.0)
+
 def setup_physics_world() -> None:
     """Configure the physics world settings for realistic LEGO simulation"""
     scene = bpy.context.scene
@@ -267,6 +310,18 @@ def main() -> None:
     # Setup physics for each LEGO part
     for part in lego_parts:
         setup_lego_part_physics(part)
+
+    # Assign unique, deterministic colors to each LEGO part to aid debugging
+    try:
+        total = max(1, len(lego_parts))
+        for i, part in enumerate(lego_parts):
+            h = float(i) / float(total)
+            rgba = hsv_to_rgba(h, 0.7, 0.9)
+            mat = ensure_material(f"LEGO_Part_Mat_{i:03d}", color_rgba=rgba, roughness=0.35)
+            assign_material(part, mat)
+        print(f"\u2705 Assigned unique colors to {len(lego_parts)} LEGO parts")
+    except Exception:
+        print("\u26A0\ufe0f Failed to assign per-part colors (continuing)" )
     
     # Position parts above the bucket so they can fall
     position_parts_above_bucket(lego_parts)

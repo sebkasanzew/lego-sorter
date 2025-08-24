@@ -30,7 +30,7 @@ def clear_collection_objects(col_name: str) -> None:
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
-def setup_world_ambient(strength: float = 0.2, color=(0.9, 0.95, 1.0)) -> None:
+def setup_world_ambient(strength: float = 0.12, color=(0.9, 0.95, 1.0)) -> None:
     world = bpy.context.scene.world
     if not world:
         world = bpy.data.worlds.new("World")
@@ -80,7 +80,7 @@ def main() -> None:
         location=center + Vector((0.8, -0.8, 1.2)),
         rotation=(1.2, 0.0, 0.8),
         size=0.8,
-        power_watts=800.0,
+        power_watts=220.0,
     )
     # Fill light (opposite side, softer)
     fill = add_area_light(
@@ -88,7 +88,7 @@ def main() -> None:
         location=center + Vector((-0.9, 0.8, 0.9)),
         rotation=(1.3, 0.0, -2.2),
         size=1.0,
-        power_watts=400.0,
+        power_watts=120.0,
         color=(0.95, 0.98, 1.0),
     )
     # Rim light (back light to add separation)
@@ -97,7 +97,7 @@ def main() -> None:
         location=center + Vector((0.0, -1.2, 1.3)),
         rotation=(1.5, 0.0, 0.0),
         size=0.6,
-        power_watts=600.0,
+        power_watts=120.0,
     )
 
     for obj in (key, fill, rim):

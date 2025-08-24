@@ -26,6 +26,7 @@ CLOSE_FACTOR = 0.45  # final multiplier to bring camera closer (0.0-1.0)
 # Absolute output path to keep artifacts inside the repo
 REPO_ROOT = "/Users/sebastian/Repos/private/lego-sorter"
 RENDERS_DIR = os.path.join(REPO_ROOT, "renders")
+# We'll organize outputs into per-frame subfolders: frame_01, frame_05, frame_10, frame_20
 OUTPUT_PATH = os.path.join(RENDERS_DIR, "snapshot.png")
 MULTI_ANGLES = [
     (Vector((1.0, -1.0, 0.6)), "diag"),
@@ -52,6 +53,25 @@ ORTHO_VIEWS = [
 
 def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
+
+
+def clear_renders_dir(root: str) -> None:
+    """Safely delete PNG files inside the renders directory and its subfolders.
+    Only removes files with .png extension to avoid accidental deletions.
+    """
+    import fnmatch
+
+    if not os.path.exists(root):
+        return
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in filenames:
+            if fnmatch.fnmatch(name.lower(), "*.png"):
+                try:
+                    path = os.path.join(dirpath, name)
+                    os.remove(path)
+                    print(f"[render_snapshot] Removed old render: {path}")
+                except Exception:
+                    print(f"[render_snapshot] Failed to remove {path} (continuing)")
 
 
 # Lightweight vector math helpers to avoid stub attribute issues
@@ -319,20 +339,26 @@ def render_once(output_path: str, offset_dir_override: Optional[Vector] = None) 
 
 
 def main() -> None:
+    # Remove previous renders to ensure fresh outputs
+    clear_renders_dir(RENDERS_DIR)
     ensure_dir(RENDERS_DIR)
-    # Primary angle
-    render_once(OUTPUT_PATH)
-    # Additional angles
-    for vec, tag in MULTI_ANGLES:
-        out = os.path.join(RENDERS_DIR, f"snapshot_{tag}.png")
-        render_once(out, offset_dir_override=vec)
-    # Orthographic technical views
+    # Frames to capture
+    frames = [1, 5, 10, 20]
+    # Only produce orthographic technical views per requested frames
     bounds = compute_scene_bounds()
-    if bounds is not None:
-        cam_obj = get_or_create_camera()
-        bpy.context.scene.camera = cam_obj
+    if bounds is None:
+        print("[render_snapshot] No meshes found; skipping orthographic renders")
+        return
+
+    cam_obj = get_or_create_camera()
+    bpy.context.scene.camera = cam_obj
+
+    for frame in frames:
+        bpy.context.scene.frame_set(frame)
+        subdir = os.path.join(RENDERS_DIR, f"frame_{frame:02d}")
+        ensure_dir(subdir)
         for view_dir, tag in ORTHO_VIEWS:
-            out = os.path.join(RENDERS_DIR, f"snapshot_ortho_{tag}.png")
+            out = os.path.join(subdir, f"snapshot_ortho_{tag}.png")
             position_camera_orthographic(cam_obj, bounds, view_dir=view_dir)
             configure_render(out)
             bpy.ops.render.render(write_still=True)  # type: ignore[attr-defined]
