@@ -20,7 +20,8 @@
     "**/node_modules/**",
     "**/.git/**"
   ],
-  "python.analysis.stubPath": "./typings",
+  "python.analysis.useLibraryCodeForTypes": false,
+  "python.analysis.stubPath": "./typings-project",
   "python.analysis.typeCheckingMode": "basic",
   "python.defaultInterpreterPath": "/usr/bin/python3",
   "python.linting.enabled": true,

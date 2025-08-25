@@ -18,7 +18,24 @@ def get_or_create_collection(name: str) -> Any:
     col = bpy.data.collections.get(name)
     if not col:
         col = bpy.data.collections.new(name)
-        bpy.context.scene.collection.children.link(col)
+        scene = bpy.context.scene
+        if scene is None:
+            raise RuntimeError("No active scene found; cannot create collection")
+            if getattr(scene, 'collection', None) is not None:
+                try:
+                    scene.collection.children.link(col)
+                except Exception:
+                    pass
+            else:
+                view_layer = bpy.context.view_layer
+                alc = getattr(view_layer, 'active_layer_collection', None) if view_layer is not None else None
+                if alc and getattr(alc, 'collection', None) is not None:
+                    try:
+                        alc.collection.children.link(col)
+                    except Exception:
+                        pass
+                else:
+                    raise RuntimeError("No collection available to link new collection")
     return col
 
 
@@ -31,29 +48,55 @@ def clear_collection_objects(col_name: str) -> None:
 
 
 def setup_world_ambient(strength: float = 0.12, color=(0.9, 0.95, 1.0)) -> None:
-    world = bpy.context.scene.world
+    scene = bpy.context.scene
+    if scene is None:
+        raise RuntimeError("No active scene found; cannot setup world ambient")
+    world = scene.world
     if not world:
         world = bpy.data.worlds.new("World")
-        bpy.context.scene.world = world
+        scene.world = world
     world.use_nodes = True
-    nt = world.node_tree
+    nt = getattr(world, 'node_tree', None)
+    if nt is None:
+        return
     nodes = nt.nodes
     links = nt.links
     nodes.clear()
     bg = nodes.new("ShaderNodeBackground")
-    bg.inputs[0].default_value = (color[0], color[1], color[2], 1.0)
-    bg.inputs[1].default_value = strength
+    # Guard socket access
+    if bg.inputs and len(bg.inputs) >= 2:
+        try:
+            bg.inputs[0].default_value = (color[0], color[1], color[2], 1.0)
+            bg.inputs[1].default_value = strength
+        except Exception:
+            pass
     out = nodes.new("ShaderNodeOutputWorld")
-    links.new(bg.outputs[0], out.inputs[0])
+    try:
+        links.new(bg.outputs[0], out.inputs[0])
+    except Exception:
+        pass
 
 
 def add_area_light(name: str, location: Vector, rotation: tuple[float, float, float],
                    size: float, power_watts: float, color=(1.0, 1.0, 1.0)) -> Any:
     light_data = bpy.data.lights.new(name=name, type='AREA')
-    light_data.energy = power_watts
-    light_data.color = color
-    light_data.shape = 'SQUARE'
-    light_data.size = size
+    # Some stub versions may not expose these attributes in typing; set defensively
+    try:
+        setattr(light_data, 'energy', power_watts)
+    except Exception:
+        pass
+    try:
+        setattr(light_data, 'color', color)
+    except Exception:
+        pass
+    try:
+        setattr(light_data, 'shape', 'SQUARE')
+    except Exception:
+        pass
+    try:
+        setattr(light_data, 'size', size)
+    except Exception:
+        pass
     light_obj = bpy.data.objects.new(name, light_data)
     light_obj.location = location
     light_obj.rotation_euler = rotation

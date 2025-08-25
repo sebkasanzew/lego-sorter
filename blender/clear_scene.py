@@ -14,20 +14,38 @@ import bpy
 
 def remove_all_objects():
     """Remove all objects from the scene"""
-    if bpy.context.object:
-        bpy.ops.object.select_all(action='SELECT')
-        bpy.ops.object.delete()
-        print("✅ Removed all objects from scene")
+    # Use the data API to remove objects so this works without a UI context
+    removed = 0
+    for obj in list(bpy.data.objects):
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+            removed += 1
+        except Exception:
+            # If removal fails for any object, skip it
+            pass
+
+    if removed:
+        print(f"✅ Removed {removed} objects from scene")
     else:
         print("ℹ️  No objects to delete in scene")
 
 def clean_empty_collections():
     """Clean up empty collections"""
     removed_count = 0
+    # Don't remove the main scene collection or collections that are linked to it
+    scene = bpy.context.scene
+    main_col = scene.collection if scene is not None else None
+
     for collection in list(bpy.data.collections):
-        if not collection.objects:
-            bpy.data.collections.remove(collection)
-            removed_count += 1
+        try:
+            if collection == main_col:
+                continue
+            if not collection.objects:
+                bpy.data.collections.remove(collection)
+                removed_count += 1
+        except Exception:
+            # Skip collections that cannot be removed
+            pass
     
     if removed_count > 0:
         print(f"✅ Cleaned up {removed_count} empty collections")

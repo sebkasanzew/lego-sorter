@@ -96,17 +96,30 @@ def _dot(a: Vector, b: Vector) -> float:
 
 def get_or_create_camera(name: str = "SorterCam") -> Any:
     cam_obj = bpy.data.objects.get(name)  # type: ignore[attr-defined]
-    if cam_obj and cam_obj.type == 'CAMERA':
+    if cam_obj and getattr(cam_obj, 'type', None) == 'CAMERA':
         return cam_obj
 
     cam_data = bpy.data.cameras.new(name)  # type: ignore[attr-defined]
     cam_obj = bpy.data.objects.new(name, cam_data)  # type: ignore[attr-defined]
     scene = bpy.context.scene
+    if scene is None:
+        raise RuntimeError("No active Blender scene found; cannot create camera")
     # Link to active collection
-    if scene.collection is not None:
-        scene.collection.objects.link(cam_obj)
+    if getattr(scene, 'collection', None) is not None:
+        try:
+            scene.collection.objects.link(cam_obj)
+        except Exception:
+            pass
     else:
-        bpy.context.view_layer.active_layer_collection.collection.objects.link(cam_obj)
+        view_layer = bpy.context.view_layer
+        alc = getattr(view_layer, 'active_layer_collection', None) if view_layer is not None else None
+        if alc and getattr(alc, 'collection', None) is not None:
+            try:
+                alc.collection.objects.link(cam_obj)
+            except Exception:
+                pass
+        else:
+            raise RuntimeError("No collection available to link new camera")
     return cam_obj
 
 
@@ -119,7 +132,10 @@ def world_bounds_of_object(obj: Any) -> Tuple[Any, Any]:
 
 
 def _collect_scene_corners() -> list[Vector]:
-    meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH']
+    scene = bpy.context.scene
+    if scene is None:
+        return []
+    meshes = [o for o in scene.objects if getattr(o, 'type', None) == 'MESH']
     corners: list[Vector] = []
     for obj in meshes:
         try:
@@ -131,7 +147,10 @@ def _collect_scene_corners() -> list[Vector]:
 
 
 def compute_scene_bounds() -> Optional[Tuple[Any, Any]]:
-    meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH']
+    scene = bpy.context.scene
+    if scene is None:
+        return None
+    meshes = [o for o in scene.objects if getattr(o, 'type', None) == 'MESH']
     if not meshes:
         return None
     min_v: Optional[Any] = None
@@ -200,10 +219,18 @@ def position_camera_to_fit_bounds(cam: Any, bounds: Tuple[Any, Any]) -> None:
     if corners:
         for _ in range(MAX_DOLLY_STEPS):
             xs, ys = [], []
+            scene = bpy.context.scene
+            if scene is None:
+                break
             for co in corners:
-                v = world_to_camera_view(bpy.context.scene, cam, co)
+                try:
+                    v = world_to_camera_view(scene, cam, co)
+                except Exception:
+                    continue
                 xs.append(float(v.x))
                 ys.append(float(v.y))
+            if not xs or not ys:
+                break
             min_x, max_x = min(xs), max(xs)
             min_y, max_y = min(ys), max(ys)
             width = max_x - min_x
@@ -225,6 +252,8 @@ def position_camera_to_fit_bounds(cam: Any, bounds: Tuple[Any, Any]) -> None:
 
 def configure_render(output_path: str) -> None:
     scene = bpy.context.scene
+    if scene is None:
+        raise RuntimeError("No active scene found; cannot configure render")
     ensure_dir(os.path.dirname(output_path))
 
     # Choose an available render engine across Blender versions
@@ -299,7 +328,10 @@ def position_camera_orthographic(cam: Any, bounds: tuple[Any, Any], view_dir: Ve
 
     # Compute required ortho scale from projected width/height and render aspect
     scene = bpy.context.scene
-    aspect = scene.render.resolution_x / max(1, scene.render.resolution_y)
+    if scene is None or getattr(scene, 'render', None) is None:
+        aspect = 16 / 9
+    else:
+        aspect = scene.render.resolution_x / max(1, scene.render.resolution_y)
     width, height = _project_bounds_onto_plane(dims, view_dir)
     # Ortho scale is camera half-width in Blender units
     half_width = 0.5 * width * pad
@@ -316,8 +348,10 @@ def render_once(output_path: str, offset_dir_override: Optional[Vector] = None) 
     print("[render_snapshot] Starting snapshot render…")
     bounds = compute_scene_bounds()
     cam_obj = get_or_create_camera()
-    bpy.context.scene.camera = cam_obj
-
+    scene = bpy.context.scene
+    if scene is None:
+        raise RuntimeError("No active scene found; cannot render")
+    scene.camera = cam_obj
     if bounds is None:
         cam_obj.location = Vector((0.0, -3.0, 2.0))
         look_at(cam_obj, Vector((0.0, 0.0, 0.0)))
@@ -351,10 +385,17 @@ def main() -> None:
         return
 
     cam_obj = get_or_create_camera()
-    bpy.context.scene.camera = cam_obj
+    scene = bpy.context.scene
+    if scene is None:
+        print("[render_snapshot] No active scene found; aborting")
+        return
+    scene.camera = cam_obj
 
     for frame in frames:
-        bpy.context.scene.frame_set(frame)
+        try:
+            scene.frame_set(frame)
+        except Exception:
+            pass
         subdir = os.path.join(RENDERS_DIR, f"frame_{frame:02d}")
         ensure_dir(subdir)
         for view_dir, tag in ORTHO_VIEWS:

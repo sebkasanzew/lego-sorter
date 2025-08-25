@@ -170,22 +170,57 @@ def import_lego_parts():
 
     # Create a collection for all imported parts
     collection_name = "lego_parts"
-    new_collection = bpy.data.collections.new(collection_name) # type: ignore
-    bpy.context.scene.collection.children.link(new_collection)
+    new_collection = bpy.data.collections.new(collection_name)  # type: ignore
+    scene = bpy.context.scene
+    if scene is None:
+        print("❌ No active scene to link collection into; aborting")
+        return
+    if getattr(scene, 'collection', None) is not None:
+        try:
+            scene.collection.children.link(new_collection)
+        except Exception:
+            pass
+    else:
+        view_layer = bpy.context.view_layer
+        alc = getattr(view_layer, 'active_layer_collection', None) if view_layer is not None else None
+        if alc and getattr(alc, 'collection', None) is not None:
+            try:
+                alc.collection.children.link(new_collection)
+            except Exception:
+                pass
+        else:
+            print("❌ Could not link new collection into scene; aborting")
+            return
 
     imported_count = 0
     for dat_file in filtered_dat_files:
         file_path = os.path.join(LDRAW_PARTS_PATH, dat_file)
 
         try:
-            # Get existing objects to identify newly imported ones
-            existing_objects = set(bpy.context.scene.objects)
+            scene = bpy.context.scene
+            if scene is None:
+                print("❌ No active scene found; skipping import")
+                failed_files.add(dat_file)
+                continue
 
-            # Import the .dat file using the LDraw importer
-            bpy.ops.import_scene.importldraw(filepath=file_path)
-            
+            # Get existing objects to identify newly imported ones
+            existing_objects = set(scene.objects)
+
+            # Import the .dat file using the LDraw importer (support a couple operator names)
+            import_op = getattr(bpy.ops.import_scene, "importldraw", None) or getattr(bpy.ops.import_scene, "import_ldraw", None)
+            if import_op is None:
+                print(f"⚠️  LDraw import operator not found (ensure the importer addon is enabled). Skipping {dat_file}.")
+                failed_files.add(dat_file)
+                continue
+            try:
+                import_op(filepath=file_path)
+            except Exception as e:
+                print(f"⚠️  Import operator failed for {dat_file}: {e}")
+                failed_files.add(dat_file)
+                continue
+
             # Identify newly imported objects
-            imported_objects = [obj for obj in bpy.context.scene.objects if obj not in existing_objects]
+            imported_objects = [obj for obj in scene.objects if obj not in existing_objects]
 
             if not imported_objects:
                 if dat_file not in failed_files:
@@ -195,17 +230,36 @@ def import_lego_parts():
 
             # Move imported objects to the new collection
             for obj in imported_objects:
-                bpy.context.scene.collection.objects.unlink(obj)
-                new_collection.objects.link(obj)
+                try:
+                    if getattr(scene, 'collection', None) is not None and obj.name in scene.collection.objects:
+                        try:
+                            scene.collection.objects.unlink(obj)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    new_collection.objects.link(obj)
+                except Exception:
+                    pass
 
             # Apply transformations and calculate bounding box
             min_z = float('inf')
             max_z = float('-inf')
 
             for obj in imported_objects:
-                bpy.context.view_layer.objects.active = obj
+                view_layer = bpy.context.view_layer
+                if view_layer:
+                    try:
+                        view_layer.objects.active = obj
+                    except Exception:
+                        pass
                 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-                bpy.context.view_layer.update()
+                if view_layer:
+                    try:
+                        view_layer.update()
+                    except Exception:
+                        pass
 
                 bbox_corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
                 min_z = min(min_z, *[corner.z for corner in bbox_corners])
@@ -230,14 +284,20 @@ def import_lego_parts():
             z_position += total_height * spacing_multiplier
 
             # Deselect all objects
-            bpy.ops.object.select_all(action='DESELECT')
-            
+            try:
+                bpy.ops.object.select_all(action='DESELECT')
+            except Exception:
+                pass
+
             imported_count += 1
             print(f"✅ Imported {dat_file} (#{imported_count})")
 
         except Exception as e:
             print(f"❌ Failed to import {dat_file}: {e}")
-            bpy.ops.object.select_all(action='DESELECT')
+            try:
+                bpy.ops.object.select_all(action='DESELECT')
+            except Exception:
+                pass
 
     print(f"🎉 Import completed! Successfully imported {imported_count} LEGO parts")
     if failed_files:

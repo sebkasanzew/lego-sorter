@@ -58,6 +58,48 @@ python utils/blender_mcp_client.py
 - **Path Configuration**: `.vscode/settings.json` adds `blender/` and `utils/` to analysis paths
 - **Linting**: Flake8 enabled with E501, W503, F401 ignored for Blender compatibility
 
+### Typing & Pylance setup (recommended)
+
+To avoid scattering `# type: ignore` and to get solid IntelliSense:
+
+- Prefer versioned Blender stubs from PyPI that match your Blender version exactly:
+   - macOS example: install one of `fake-bpy-module-4.2`, `fake-bpy-module-4.3`, or the exact version you use. Use `fake-bpy-module-latest` only when you are on the latest daily build.
+- Ensure VS Code uses a Python interpreter where the package is installed (see Command Palette: Python: Select Interpreter).
+- Keep `.vscode/settings.json` simple and rely on site-packages for stubs:
+   - Use `python.analysis.extraPaths` only for project source roots (e.g., `blender/`, `utils/`).
+   - If you have a local `typings/` folder, only keep project-specific additions there; avoid shipping full `bpy` or `mathutils` copies that may shadow the PyPI stubs. If you don’t need local additions, remove `typings/` or point `python.analysis.stubPath` elsewhere.
+- Suggested Pylance knobs:
+   - `python.analysis.typeCheckingMode`: `basic` (current) or `standard` if you want more coverage.
+   - Optionally set `python.analysis.useLibraryCodeForTypes` to `false` to rely on stubs only.
+- Prefer real types over `Any`:
+   - `from bpy.types import Object, Material, Collection, Operator` and annotate function parameters/returns accordingly.
+   - Use `mathutils.Vector` directly (provided by the stubs) instead of custom vector stubs.
+  
+Important note about VS Code / Pylance and Blender typings
+- Use the `fake-bpy-module` (installed into your Python environment) for accurate Blender type stubs instead of the workspace `typings/` folder. Local `typings/` can shadow the site-package stubs and cause confusing diagnostics.
+- Set Pylance's stub path to an empty project folder (we use `./typings-project`) to ensure Pylance picks up the `fake-bpy-module` from site-packages. Example `.vscode/settings.json` snippet:
+
+   "python.analysis.stubPath": ["./typings-project"]
+
+- If you currently have a `typings/` folder in the repo, archive or remove it (or move the useful bits into proper stubs) — do not keep it in the workspace root while relying on the PyPI stubs.
+- If you must keep custom stubs, place them in a different folder and document that in `.vscode/settings.json` explicitly; avoid naming it `typings` at the project root.
+- When you must downcast dynamic Blender attributes, prefer `typing.cast[...]` around the narrowest `bpy.types.*` type instead of `# type: ignore`.
+
+Minimal example
+- Before:
+   - `import bpy  # type: ignore`
+   - `obj: Any = bpy.context.active_object  # type: ignore`
+- After (preferred pattern without cast):
+   - `import bpy`
+   - `from typing import Optional`
+   - `from bpy.types import Object`
+   - `obj: Optional[Object] = None`
+   - `if isinstance(bpy.context.active_object, Object):`
+         - `obj = bpy.context.active_object`
+   - `# Now `obj` is either an Object or None; guard before use`
+
+This keeps type-checkers happy without silencing them globally.
+
 ## Project-Specific Conventions
 
 ### Blender Script Patterns

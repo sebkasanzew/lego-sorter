@@ -86,16 +86,20 @@ def main():
         print(f"❌ Bucket script not found: {bucket_script}")
         return
 
-    # 2. Create conveyor belt system
-    print("\n2️⃣ Creating conveyor belt system...")
-    conveyor_script = os.path.join(blender_dir, "create_conveyor_belt.py")
-    if os.path.exists(conveyor_script):
-        if not run_with_retries(client, conveyor_script, "Conveyor Belt System", attempts=(1 if is_debug else 2), timeout=default_timeout):
-            print("❌ Conveyor creation failed after retries")
-            return
+    # 2. Create conveyor belt system (optional: set environment SKIP_CONVEYOR=1 to skip)
+    skip_conveyor = os.getenv('SKIP_CONVEYOR', '0') == '1'
+    if skip_conveyor:
+        print("\n2️⃣ Skipping conveyor belt creation (SKIP_CONVEYOR=1)")
     else:
-        print(f"❌ Conveyor belt script not found: {conveyor_script}")
-        return
+        print("\n2️⃣ Creating conveyor belt system...")
+        conveyor_script = os.path.join(blender_dir, "create_conveyor_belt.py")
+        if os.path.exists(conveyor_script):
+            if not run_with_retries(client, conveyor_script, "Conveyor Belt System", attempts=(1 if is_debug else 2), timeout=default_timeout):
+                print("❌ Conveyor creation failed after retries")
+                return
+        else:
+            print(f"❌ Conveyor belt script not found: {conveyor_script}")
+            return
 
     # 3. Import LEGO parts
     print("\n3️⃣ Importing LEGO parts...")
