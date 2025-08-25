@@ -1,6 +1,29 @@
 {
   "cSpell.words": [
-    "lego"
+    "AABB",
+    "bezier",
+    "bmesh",
+    "bsdf",
+    "Bsdf",
+    "BSDF",
+    "depsgraph",
+    "EEVEE",
+    "euler",
+    "fcurve",
+    "fcurves",
+    "importldraw",
+    "ldraw",
+    "LDRAW",
+    "lego",
+    "Liftarm",
+    "mathutils",
+    "ptcache",
+    "rigidbody",
+    "subfolders",
+    "substeps",
+    "vdir",
+    "verts",
+    "vstep"
   ],
   "files.associations": {
     "*.py": "python"
