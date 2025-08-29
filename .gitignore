@@ -168,3 +168,5 @@ cython_debug/
 Network Trash Folder
 Temporary Items
 .apdisk
+
+renders/*

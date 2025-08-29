@@ -12,7 +12,10 @@ Usage:
 """
 
 import bpy
-from typing import Optional, Tuple, Any, cast
+import bmesh
+from typing import Optional, Tuple, Any
+from bpy.types import Mesh
+
 
 def create_bucket() -> Tuple[Optional[Any], Optional[Any]]:
     """Create a hollow bucket with a base for sorting LEGO parts using boolean operations"""
@@ -23,109 +26,134 @@ def create_bucket() -> Tuple[Optional[Any], Optional[Any]]:
     wall_thickness = 0.01  # 1cm thick walls
 
     # Create the outer bucket (frustum shape)
-    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.15))  # type: ignore
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.15))
     outer_bucket = bpy.context.active_object
     if outer_bucket:
         outer_bucket.name = "Outer_Bucket_Temp"
-    
+
     # Enter edit mode and modify to frustum shape
-    bpy.ops.object.mode_set(mode='EDIT')  # type: ignore
-    bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
-    
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+
     # Get bmesh representation for precise editing
-    import bmesh
-    if outer_bucket and hasattr(outer_bucket, 'data') and outer_bucket.data:  # type: ignore
-        bm = bmesh.from_edit_mesh(outer_bucket.data)  # type: ignore
-        
+    mesh_data: Optional[Mesh] = None
+    if (
+        outer_bucket
+        and outer_bucket.data is not None
+        and isinstance(outer_bucket.data, Mesh)
+    ):
+        mesh_data = outer_bucket.data
+
+    if mesh_data is not None:
+        bm = bmesh.from_edit_mesh(mesh_data)
+
         # Select and scale top face (highest Z)
-        bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
+        bpy.ops.mesh.select_all(action="DESELECT")
         for face in bm.faces:
             if all(v.co.z > 0 for v in face.verts):
                 face.select = True
-        
-        bmesh.update_edit_mesh(outer_bucket.data)  # type: ignore
-        bpy.ops.transform.resize(value=(bucket_size_top, bucket_size_top, 1))  # type: ignore
-        
+        bmesh.update_edit_mesh(mesh_data)
+        bpy.ops.transform.resize(value=(bucket_size_top, bucket_size_top, 1))
+
         # Select and scale bottom face (lowest Z)
-        bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
-        bm = bmesh.from_edit_mesh(outer_bucket.data)  # type: ignore
+        bpy.ops.mesh.select_all(action="DESELECT")
+        bm = bmesh.from_edit_mesh(mesh_data)
         for face in bm.faces:
             if all(v.co.z < 0 for v in face.verts):
                 face.select = True
-        
-        bmesh.update_edit_mesh(outer_bucket.data)  # type: ignore
-        bpy.ops.transform.resize(value=(bucket_size_bottom, bucket_size_bottom, 1))  # type: ignore
-        
+        bmesh.update_edit_mesh(mesh_data)
+        bpy.ops.transform.resize(value=(bucket_size_bottom, bucket_size_bottom, 1))
+
         # Scale the whole bucket to proper height
-        bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
-        bpy.ops.transform.resize(value=(1, 1, bucket_height))  # type: ignore
-    
-    bpy.ops.object.mode_set(mode='OBJECT')  # type: ignore
-    
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.transform.resize(value=(1, 1, bucket_height))
+
+    bpy.ops.object.mode_set(mode="OBJECT")
+
     # Create inner bucket (slightly smaller for hollowing)
-    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.15 + wall_thickness))  # type: ignore
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.15 + wall_thickness))
     inner_bucket = bpy.context.active_object
     if inner_bucket:
         inner_bucket.name = "Inner_Bucket_Temp"
-    
+
     # Make inner bucket smaller and shaped
-    bpy.ops.object.mode_set(mode='EDIT')  # type: ignore
-    bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
-    
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+
     # Get bmesh for inner bucket
-    if inner_bucket and hasattr(inner_bucket, 'data') and inner_bucket.data:  # type: ignore
-        bm = bmesh.from_edit_mesh(inner_bucket.data)  # type: ignore
-        
+    inner_mesh: Optional[Mesh] = None
+    if (
+        inner_bucket
+        and inner_bucket.data is not None
+        and isinstance(inner_bucket.data, Mesh)
+    ):
+        inner_mesh = inner_bucket.data
+
+    if inner_mesh is not None:
+        bm = bmesh.from_edit_mesh(inner_mesh)
+
         # Select and scale top face
-        bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
+        bpy.ops.mesh.select_all(action="DESELECT")
         for face in bm.faces:
             if all(v.co.z > 0 for v in face.verts):
                 face.select = True
-        
-        bmesh.update_edit_mesh(inner_bucket.data)  # type: ignore
-        bpy.ops.transform.resize(value=(bucket_size_top - wall_thickness, bucket_size_top - wall_thickness, 1))  # type: ignore
-        
+        bmesh.update_edit_mesh(inner_mesh)
+        bpy.ops.transform.resize(
+            value=(
+                bucket_size_top - wall_thickness,
+                bucket_size_top - wall_thickness,
+                1,
+            )
+        )
+
         # Select and scale bottom face
-        bpy.ops.mesh.select_all(action='DESELECT')  # type: ignore
-        bm = bmesh.from_edit_mesh(inner_bucket.data)  # type: ignore
+        bpy.ops.mesh.select_all(action="DESELECT")
+        bm = bmesh.from_edit_mesh(inner_mesh)
         for face in bm.faces:
             if all(v.co.z < 0 for v in face.verts):
                 face.select = True
-        
-        bmesh.update_edit_mesh(inner_bucket.data)  # type: ignore
-        bpy.ops.transform.resize(value=(bucket_size_bottom - wall_thickness, bucket_size_bottom - wall_thickness, 1))  # type: ignore
-        
+        bmesh.update_edit_mesh(inner_mesh)
+        bpy.ops.transform.resize(
+            value=(
+                bucket_size_bottom - wall_thickness,
+                bucket_size_bottom - wall_thickness,
+                1,
+            )
+        )
+
         # Scale height (slightly shorter than outer)
-        bpy.ops.mesh.select_all(action='SELECT')  # type: ignore
-        bpy.ops.transform.resize(value=(1, 1, bucket_height - wall_thickness))  # type: ignore
-    
-    bpy.ops.object.mode_set(mode='OBJECT')  # type: ignore
-    
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.transform.resize(value=(1, 1, bucket_height - wall_thickness))
+
+    bpy.ops.object.mode_set(mode="OBJECT")
+
     # Use boolean difference to hollow out the bucket
     if outer_bucket and inner_bucket:
         # ensure outer is active
-        try:
-            view_layer = bpy.context.view_layer
-            if view_layer and getattr(view_layer, 'objects', None) is not None:
-                try:
-                    view_layer.objects.active = outer_bucket
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        view_layer = bpy.context.view_layer
+        if view_layer is not None and getattr(view_layer, "objects", None) is not None:
+            try:
+                view_layer.objects.active = outer_bucket
+            except Exception:
+                pass
 
         # Add boolean modifier
         try:
-            bool_mod = outer_bucket.modifiers.new(name="Boolean", type='BOOLEAN')  # type: ignore
-            bool_mod.operation = 'DIFFERENCE'  # type: ignore
-            bool_mod.object = inner_bucket  # type: ignore
+            bool_mod = outer_bucket.modifiers.new(name="Boolean", type="BOOLEAN")
+            # Use a loosely-typed reference to avoid static attribute errors
+            from typing import Any, cast
+
+            bool_mod_any: Any = cast(Any, bool_mod)
+
+            bool_mod_any.operation = "DIFFERENCE"
+            bool_mod_any.object = inner_bucket
 
             # Apply the modifier
-            bpy.ops.object.modifier_apply(modifier=bool_mod.name)  # type: ignore
+            bpy.ops.object.modifier_apply(modifier=bool_mod.name)
 
             # Remove the inner bucket (no longer needed)
             try:
-                bpy.data.objects.remove(inner_bucket)  # type: ignore
+                bpy.data.objects.remove(inner_bucket)
             except Exception:
                 pass
 
@@ -137,7 +165,7 @@ def create_bucket() -> Tuple[Optional[Any], Optional[Any]]:
 
             # Apply transforms and ensure normals are correct so collisions align
             try:
-                if view_layer and getattr(view_layer, 'objects', None) is not None:
+                if view_layer and getattr(view_layer, "objects", None) is not None:
                     try:
                         view_layer.objects.active = outer_bucket
                     except Exception:
@@ -145,15 +173,17 @@ def create_bucket() -> Tuple[Optional[Any], Optional[Any]]:
                 outer_bucket.select_set(True)
                 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
                 # Recalculate normals outside
-                bpy.ops.object.mode_set(mode='EDIT')  # type: ignore
-                bpy.ops.mesh.normals_make_consistent(inside=False)  # type: ignore
-                bpy.ops.object.mode_set(mode='OBJECT')  # type: ignore
+                bpy.ops.object.mode_set(mode="EDIT")
+                bpy.ops.mesh.normals_make_consistent(inside=False)
+                bpy.ops.object.mode_set(mode="OBJECT")
                 # Set origin to geometry to align pivot/collision
-                bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='MEDIAN')  # type: ignore
+                bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY", center="MEDIAN")
             except Exception:
                 pass
 
-            print(f"✅ Created hollow bucket with funnel shape using boolean operations")
+            print(
+                f"✅ Created hollow bucket with funnel shape using boolean operations"
+            )
 
             # Create an internal collider: a slightly scaled-down duplicate to act as reliable collision geometry
             collider = None
@@ -162,10 +192,15 @@ def create_bucket() -> Tuple[Optional[Any], Optional[Any]]:
                     raise RuntimeError("No outer bucket to duplicate for collider")
                 collider = outer_bucket.copy()
                 try:
-                    collider.data = outer_bucket.data.copy()  # type: ignore[attr-defined]
+                    data_obj = outer_bucket.data
+                    if data_obj is not None:
+                        try:
+                            collider.data = data_obj.copy()
+                        except Exception:
+                            pass
                 except Exception:
                     pass
-                collider.name = 'Sorting_Bucket_Collider'
+                collider.name = "Sorting_Bucket_Collider"
                 # Slightly scale down to ensure it's fully inside the visible bucket
                 try:
                     collider.scale = (0.995, 0.995, 0.995)
@@ -175,38 +210,43 @@ def create_bucket() -> Tuple[Optional[Any], Optional[Any]]:
                 # Link collider into the active collection or scene collection
                 try:
                     scene = bpy.context.scene
-                    if scene is not None and getattr(scene, 'collection', None) is not None:
-                        scene.collection.objects.link(collider)
-                    else:
-                        # fallback to context.collection
-                        ctx_coll = getattr(bpy.context, 'collection', None)
-                        if ctx_coll is not None:
-                            ctx_coll.objects.link(collider)
+                    try:
+                        if scene is not None and scene.collection is not None:
+                            scene.collection.objects.link(collider)
+                        else:
+                            # fallback to context.collection
+                            ctx_coll = bpy.context.collection
+                            if ctx_coll is not None:
+                                ctx_coll.objects.link(collider)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
 
                 # Make collider passive rigid body with mesh collider and zero margin
+                # Make collider passive rigid body with mesh collider and zero margin
+                view_layer = bpy.context.view_layer
+                if (
+                    view_layer is not None
+                    and getattr(view_layer, "objects", None) is not None
+                ):
+                    try:
+                        view_layer.objects.active = collider
+                    except Exception:
+                        pass
+                collider.select_set(True)
                 try:
-                    view_layer = bpy.context.view_layer
-                    if view_layer and getattr(view_layer, 'objects', None) is not None:
-                        try:
-                            view_layer.objects.active = collider
-                        except Exception:
-                            pass
-                    collider.select_set(True)
-                    bpy.ops.rigidbody.object_add(type='PASSIVE')  # type: ignore
-                    collider.rigid_body.collision_shape = 'MESH'  # type: ignore
-                    try:
-                        collider.rigid_body.use_margin = True  # type: ignore
-                        collider.rigid_body.collision_margin = 0.0  # type: ignore
-                    except Exception:
-                        pass
-                    try:
-                        collider.rigid_body.friction = 0.8  # type: ignore
-                    except Exception:
-                        pass
+                    bpy.ops.rigidbody.object_add(type="PASSIVE")
                 except Exception:
                     pass
+                rb = getattr(collider, "rigid_body", None)
+                if rb is None:
+                    raise Exception("Rigid body not assigned")
+
+                rb.use_margin = True
+                rb.collision_margin = 0.0
+                rb.friction = 0.8
+
             except Exception:
                 collider = None
 
@@ -217,17 +257,18 @@ def create_bucket() -> Tuple[Optional[Any], Optional[Any]]:
 
     return None, None
 
+
 def main() -> None:
     """Main function to create the sorting bucket"""
     # Remove existing bucket objects and collections
-    bucket_collection = bpy.data.collections.get("bucket")  # type: ignore
+    bucket_collection = bpy.data.collections.get("bucket")
     if bucket_collection is not None:
         # Remove all objects in the bucket collection
         for obj in list(bucket_collection.objects):
-            bpy.data.objects.remove(obj, do_unlink=True)  # type: ignore
+            bpy.data.objects.remove(obj, do_unlink=True)
         # Unlink and remove the collection itself
-        scene = getattr(bpy.context, 'scene', None)
-        if scene and getattr(scene, 'collection', None) is not None:
+        scene = bpy.context.scene
+        if scene and getattr(scene, "collection", None) is not None:
             try:
                 if bucket_collection.name in scene.collection.children:
                     scene.collection.children.unlink(bucket_collection)
@@ -239,44 +280,63 @@ def main() -> None:
     bucket, base = create_bucket()
     # Create a new collection and add the bucket to it
     bucket_collection = None
-    if hasattr(bpy.data, "collections") and hasattr(bpy.data.collections, "new"):
-        bucket_collection = bpy.data.collections.new("bucket")  # type: ignore
+    try:
+        bucket_collection = bpy.data.collections.new("bucket")
         # Link the new collection to the scene if not already linked
-        scene = getattr(bpy.context, 'scene', None)
-        if scene and hasattr(scene, "collection") and hasattr(scene.collection, "children"):
+        scene = bpy.context.scene
+        if scene is not None:
             try:
                 scene.collection.children.link(bucket_collection)
             except Exception:
                 pass
+    except Exception:
+        bucket_collection = None
     # Move the bucket to the bucket collection
     if bucket is not None and bucket_collection is not None:
-        for coll in list(bucket.users_collection):  # type: ignore
+        for coll in list(bucket.users_collection):
             coll.objects.unlink(bucket)
         bucket_collection.objects.link(bucket)
-    
+
     if bucket is not None:
         print(f"✅ Created sorting bucket: {bucket.name}")
         # Ensure bucket has correct collision properties when script runs standalone
+        view_layer = bpy.context.view_layer
+        if view_layer is not None and getattr(view_layer, "objects", None) is not None:
+            try:
+                view_layer.objects.active = bucket
+            except Exception:
+                pass
         try:
-            view_layer = getattr(bpy.context, 'view_layer', None)
-            if view_layer and getattr(view_layer, 'objects', None) is not None:
-                try:
-                    view_layer.objects.active = bucket
-                except Exception:
-                    pass
             bucket.select_set(True)
-            # Add passive rigid body if not present to help animate_lego_physics attach correct settings
-            if not getattr(bucket, 'rigid_body', None):
-                bpy.ops.rigidbody.object_add(type='PASSIVE')  # type: ignore
-                bucket.rigid_body.collision_shape = 'MESH'  # type: ignore
-                # small margin helps prevent floating due to solver tolerances
+        except Exception:
+            pass
+        # Add passive rigid body if not present to help animate_lego_physics attach correct settings
+        try:
+            if not getattr(bucket, "rigid_body", None):
                 try:
-                    bucket.rigid_body.use_margin = True  # type: ignore
-                    bucket.rigid_body.collision_margin = 0.001  # 1mm margin
+                    bpy.ops.rigidbody.object_add(type="PASSIVE")
                 except Exception:
                     pass
         except Exception:
             pass
+        try:
+            rb = getattr(bucket, "rigid_body", None)
+            if rb is not None:
+                try:
+                    rb.collision_shape = "MESH"
+                except Exception:
+                    pass
+                try:
+                    rb.use_margin = True
+                except Exception:
+                    pass
+                try:
+                    rb.collision_margin = 0.001  # 1mm margin
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
 
 # Always run main when script is executed
 main()

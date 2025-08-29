@@ -1,0 +1,30 @@
+# Target python version for ruff
+target-version = "py38"
+
+# Ruff configuration - use the `lint` section for modern ruff versions
+[lint]
+# Enable a broad set of checks by default and extend select categories
+extend-select = ["E", "F", "W", "C", "S", "D", "B"]
+
+# Temporarily ignore rules that the current codebase triggers frequently so
+# the repo stays lintable; enable them incrementally later.
+extend-ignore = [
+	"W293",  # blank-line-with-whitespace
+	"E501",  # line-too-long
+	"C901",  # complex-structure
+	"D400",  # missing-trailing-period
+	"D401",  # non-imperative-mood
+	"D415",  # missing-terminal-punctuation
+	"S110",  # try-except-pass
+	"S311",  # silence pseudo-random generator warnings
+	"F541",  # f-string-missing-placeholders
+]
+
+# Match project python version (kept at top-level for ruff schema)
+
+# Per-file ignore rules (moved under lint)
+per-file-ignores = { "blender/*" = ["D", "S101"] }
+
+# Use Google-style docstrings to avoid incompatible pydocstyle rule pairs
+# (resolves D203/D211 and D212/D213 incompatibility warnings)
+pydocstyle = { convention = "google" }

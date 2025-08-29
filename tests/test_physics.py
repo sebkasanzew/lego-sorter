@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""
-Test script to verify the LEGO sorter physics animation works correctly.
+"""Test script to verify the LEGO sorter physics animation works correctly.
+
 This script tests individual components of the physics simulation.
 """
 
@@ -8,24 +8,25 @@ import os
 import sys
 
 # Add the utils directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "utils"))
 
 from blender_mcp_client import BlenderMCPClient
+
 
 def test_physics_script():
     """Test the physics animation script"""
     print("🔬 Testing LEGO Physics Animation Script")
     print("=" * 50)
-    
+
     client = BlenderMCPClient()
-    
+
     # Test connection
     if not client.test_connection():
         print("❌ Blender MCP server is not running")
         return False
-    
+
     # Test basic physics setup code
-    physics_test_code = '''
+    physics_test_code = """
 import bpy
 
 # Test if we can create a rigid body world
@@ -53,20 +54,21 @@ try:
     
 except Exception as e:
     print(f"❌ Physics test failed: {e}")
-'''
-    
+"""
+
     print("🧪 Running physics system test...")
     client.execute_code(physics_test_code, "Physics System Test")
-    
+
     return True
+
 
 def test_lego_part_detection():
     """Test if LEGO parts can be detected"""
     print("\n🔍 Testing LEGO parts detection...")
-    
+
     client = BlenderMCPClient()
-    
-    detection_code = '''
+
+    detection_code = """
 import bpy
 
 # Check for LEGO parts collection
@@ -83,15 +85,16 @@ if bucket:
     print(f"✅ Found sorting bucket: {bucket.name}")
 else:
     print("ℹ️  No sorting bucket found (this is expected if bucket isn't created yet)")
-'''
-    
+"""
+
     client.execute_code(detection_code, "LEGO Parts Detection Test")
+
 
 def main():
     """Run all tests"""
     print("🧱 LEGO Sorter Physics Test Suite")
     print("=" * 50)
-    
+
     # Test the physics script
     if test_physics_script():
         # Test LEGO part detection
@@ -99,6 +102,7 @@ def main():
         print("\n🎉 All tests completed!")
     else:
         print("\n❌ Tests failed - check Blender MCP connection")
+
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,4 @@
-"""
-LEGO Sorter Utilities Package
+"""LEGO Sorter Utilities Package
 
 This package contains utility modules for the LEGO sorter project.
 """

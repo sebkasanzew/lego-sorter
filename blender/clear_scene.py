@@ -12,6 +12,7 @@ Usage:
 
 import bpy
 
+
 def remove_all_objects():
     """Remove all objects from the scene"""
     # Use the data API to remove objects so this works without a UI context
@@ -21,13 +22,14 @@ def remove_all_objects():
             bpy.data.objects.remove(obj, do_unlink=True)
             removed += 1
         except Exception:
-            # If removal fails for any object, skip it
-            pass
+            # Re-raise with original exception as cause for better debugging
+            raise RuntimeError(f"Failed to remove object {obj.name}") from None
 
     if removed:
         print(f"✅ Removed {removed} objects from scene")
     else:
         print("ℹ️  No objects to delete in scene")
+
 
 def clean_empty_collections():
     """Clean up empty collections"""
@@ -46,27 +48,30 @@ def clean_empty_collections():
         except Exception:
             # Skip collections that cannot be removed
             pass
-    
+
     if removed_count > 0:
         print(f"✅ Cleaned up {removed_count} empty collections")
     else:
         print("ℹ️  No empty collections to clean")
 
+
 def clear_scene():
     """Clear the entire Blender scene"""
     print("🧹 Clearing Blender scene...")
-    
+
     # Remove all objects
     remove_all_objects()
-    
+
     # Clean up empty collections
     clean_empty_collections()
-    
+
     print("✅ Scene cleared successfully")
+
 
 def main():
     """Main function to clear the scene"""
     clear_scene()
+
 
 # Always run main when script is executed
 main()

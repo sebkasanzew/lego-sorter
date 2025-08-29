@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import bpy
 from mathutils import Vector
-from typing import Any
+from typing import Any, cast
 
 
 def get_or_create_collection(name: str) -> Any:
@@ -21,21 +21,30 @@ def get_or_create_collection(name: str) -> Any:
         scene = bpy.context.scene
         if scene is None:
             raise RuntimeError("No active scene found; cannot create collection")
-            if getattr(scene, 'collection', None) is not None:
+
+        # Prefer linking into the scene's top-level collection when available
+        if scene.collection is not None:
+            try:
+                scene.collection.children.link(col)
+            except Exception:
+                # Non-fatal: linking may fail if collection already linked
+                pass
+        else:
+            view_layer = bpy.context.view_layer
+            if view_layer is None:
+                raise RuntimeError("No collection available to link new collection")
+            try:
+                alc = view_layer.active_layer_collection
+            except Exception:
+                alc = None
+
+            if alc is not None and getattr(alc, "collection", None) is not None:
                 try:
-                    scene.collection.children.link(col)
+                    alc.collection.children.link(col)
                 except Exception:
                     pass
             else:
-                view_layer = bpy.context.view_layer
-                alc = getattr(view_layer, 'active_layer_collection', None) if view_layer is not None else None
-                if alc and getattr(alc, 'collection', None) is not None:
-                    try:
-                        alc.collection.children.link(col)
-                    except Exception:
-                        pass
-                else:
-                    raise RuntimeError("No collection available to link new collection")
+                raise RuntimeError("No collection available to link new collection")
     return col
 
 
@@ -56,18 +65,25 @@ def setup_world_ambient(strength: float = 0.12, color=(0.9, 0.95, 1.0)) -> None:
         world = bpy.data.worlds.new("World")
         scene.world = world
     world.use_nodes = True
-    nt = getattr(world, 'node_tree', None)
+    nt = world.node_tree
     if nt is None:
         return
     nodes = nt.nodes
     links = nt.links
     nodes.clear()
     bg = nodes.new("ShaderNodeBackground")
-    # Guard socket access
+    # Guard socket access; some Blender stubs omit NodeSocket.default_value
     if bg.inputs and len(bg.inputs) >= 2:
         try:
-            bg.inputs[0].default_value = (color[0], color[1], color[2], 1.0)
-            bg.inputs[1].default_value = strength
+            # cast to Any so static analyzers do not complain about `default_value`
+            socket_color = cast(Any, bg.inputs[0])
+            socket_color.default_value = (color[0], color[1], color[2], 1.0)
+        except Exception:
+            # Stubs may not show default_value but runtime typically supports it
+            pass
+        try:
+            socket_strength = cast(Any, bg.inputs[1])
+            socket_strength.default_value = float(strength)
         except Exception:
             pass
     out = nodes.new("ShaderNodeOutputWorld")
@@ -77,24 +93,31 @@ def setup_world_ambient(strength: float = 0.12, color=(0.9, 0.95, 1.0)) -> None:
         pass
 
 
-def add_area_light(name: str, location: Vector, rotation: tuple[float, float, float],
-                   size: float, power_watts: float, color=(1.0, 1.0, 1.0)) -> Any:
-    light_data = bpy.data.lights.new(name=name, type='AREA')
+def add_area_light(
+    name: str,
+    location: Vector,
+    rotation: tuple[float, float, float],
+    size: float,
+    power_watts: float,
+    color=(1.0, 1.0, 1.0),
+) -> Any:
+    light_data = bpy.data.lights.new(name=name, type="AREA")
     # Some stub versions may not expose these attributes in typing; set defensively
     try:
-        setattr(light_data, 'energy', power_watts)
+        # cast to Any so static analyzers do not complain about unknown attributes
+        cast(Any, light_data).energy = power_watts
     except Exception:
         pass
     try:
-        setattr(light_data, 'color', color)
+        cast(Any, light_data).color = color
     except Exception:
         pass
     try:
-        setattr(light_data, 'shape', 'SQUARE')
+        cast(Any, light_data).shape = "SQUARE"
     except Exception:
         pass
     try:
-        setattr(light_data, 'size', size)
+        cast(Any, light_data).size = size
     except Exception:
         pass
     light_obj = bpy.data.objects.new(name, light_data)

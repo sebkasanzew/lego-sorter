@@ -9,16 +9,21 @@ description = "Blender-based simulation for sorting LEGO parts"
 authors = [
     {name = "LEGO Sorter Project"}
 ]
+requires-python = ">=3.10"
 dependencies = [
-    "fake-bpy-module-latest"
+    "fake-bpy-module-latest==20250630"
 ]
-requires-python = ">=3.8"
+
+[tool.setuptools]
+# Prevent setuptools from auto-discovering packages in this flat repo layout.
+packages = []
 
 [project.optional-dependencies]
 dev = [
     "black",
     "flake8",
-    "mypy"
+    "mypy",
+    "ruff"
 ]
 
 [tool.black]
@@ -27,7 +32,7 @@ target-version = ['py38']
 include = '\.pyi?$'
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

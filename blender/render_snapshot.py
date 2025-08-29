@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import math
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, cast
 from mathutils import Vector
 import bpy
 from bpy_extras.object_utils import world_to_camera_view
@@ -63,7 +63,7 @@ def clear_renders_dir(root: str) -> None:
 
     if not os.path.exists(root):
         return
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, _dirnames, filenames in os.walk(root):
         for name in filenames:
             if fnmatch.fnmatch(name.lower(), "*.png"):
                 try:
@@ -84,10 +84,10 @@ def _length(v: Vector) -> float:
 
 
 def _normalize_vec(v: Vector) -> Vector:
-    l = _length(v)
-    if l <= 1e-8:
+    length = _length(v)
+    if length <= 1e-8:
         return Vector((0.0, 0.0, 0.0))
-    return Vector((v.x / l, v.y / l, v.z / l))
+    return Vector((v.x / length, v.y / length, v.z / length))
 
 
 def _dot(a: Vector, b: Vector) -> float:
@@ -95,25 +95,27 @@ def _dot(a: Vector, b: Vector) -> float:
 
 
 def get_or_create_camera(name: str = "SorterCam") -> Any:
-    cam_obj = bpy.data.objects.get(name)  # type: ignore[attr-defined]
-    if cam_obj and getattr(cam_obj, 'type', None) == 'CAMERA':
+    cam_obj = bpy.data.objects.get(name)
+    if cam_obj and cam_obj.type == "CAMERA":
         return cam_obj
 
-    cam_data = bpy.data.cameras.new(name)  # type: ignore[attr-defined]
-    cam_obj = bpy.data.objects.new(name, cam_data)  # type: ignore[attr-defined]
+    cam_data = bpy.data.cameras.new(name)
+    cam_obj = bpy.data.objects.new(name, cam_data)
     scene = bpy.context.scene
     if scene is None:
         raise RuntimeError("No active Blender scene found; cannot create camera")
     # Link to active collection
-    if getattr(scene, 'collection', None) is not None:
+    if scene.collection is not None:
         try:
             scene.collection.objects.link(cam_obj)
         except Exception:
             pass
     else:
         view_layer = bpy.context.view_layer
-        alc = getattr(view_layer, 'active_layer_collection', None) if view_layer is not None else None
-        if alc and getattr(alc, 'collection', None) is not None:
+        alc = None
+        if view_layer is not None:
+            alc = getattr(view_layer, "active_layer_collection", None)
+        if alc is not None and getattr(alc, "collection", None) is not None:
             try:
                 alc.collection.objects.link(cam_obj)
             except Exception:
@@ -126,8 +128,12 @@ def get_or_create_camera(name: str = "SorterCam") -> Any:
 def world_bounds_of_object(obj: Any) -> Tuple[Any, Any]:
     # Compute world-space AABB from object's bound_box
     coords = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
-    min_v = Vector((min(c.x for c in coords), min(c.y for c in coords), min(c.z for c in coords)))
-    max_v = Vector((max(c.x for c in coords), max(c.y for c in coords), max(c.z for c in coords)))
+    min_v = Vector(
+        (min(c.x for c in coords), min(c.y for c in coords), min(c.z for c in coords))
+    )
+    max_v = Vector(
+        (max(c.x for c in coords), max(c.y for c in coords), max(c.z for c in coords))
+    )
     return min_v, max_v
 
 
@@ -135,13 +141,16 @@ def _collect_scene_corners() -> list[Vector]:
     scene = bpy.context.scene
     if scene is None:
         return []
-    meshes = [o for o in scene.objects if getattr(o, 'type', None) == 'MESH']
+    meshes = [o for o in scene.objects if o.type == "MESH"]
     corners: list[Vector] = []
     for obj in meshes:
         try:
             for corner in obj.bound_box:
                 corners.append(obj.matrix_world @ Vector(corner))
-        except Exception:
+        except Exception as exc:  # Log and continue on errors reading bound_box
+            print(
+                f"⚠️  Skipping object {getattr(obj, 'name', '<unknown>')} when collecting corners: {exc}"
+            )
             continue
     return corners
 
@@ -150,61 +159,66 @@ def compute_scene_bounds() -> Optional[Tuple[Any, Any]]:
     scene = bpy.context.scene
     if scene is None:
         return None
-    meshes = [o for o in scene.objects if getattr(o, 'type', None) == 'MESH']
+    meshes = [o for o in scene.objects if o.type == "MESH"]
     if not meshes:
         return None
-    min_v: Optional[Any] = None
-    max_v: Optional[Any] = None
+    min_v = None
+    max_v = None
     for obj in meshes:
         try:
             ob_min, ob_max = world_bounds_of_object(obj)
-        except Exception:
+        except Exception as exc:  # Log and skip objects with problematic bounds
+            print(
+                f"⚠️  Skipping object {getattr(obj, 'name', '<unknown>')} when computing bounds: {exc}"
+            )
             continue
         if min_v is None:
             # Some stubs lack Vector.copy, so assign directly
             min_v, max_v = ob_min, ob_max
         else:
-            min_v.x = min(min_v.x, ob_min.x)  # type: ignore[attr-defined]
-            min_v.y = min(min_v.y, ob_min.y)  # type: ignore[attr-defined]
-            min_v.z = min(min_v.z, ob_min.z)  # type: ignore[attr-defined]
-            max_v.x = max(max_v.x, ob_max.x)  # type: ignore[attr-defined]
-            max_v.y = max(max_v.y, ob_max.y)  # type: ignore[attr-defined]
-            max_v.z = max(max_v.z, ob_max.z)  # type: ignore[attr-defined]
-    return min_v, max_v  # type: ignore[return-value]
+            # At this point min_v and max_v are not None
+            assert min_v is not None and max_v is not None
+            min_v.x = min(min_v.x, ob_min.x)
+            min_v.y = min(min_v.y, ob_min.y)
+            min_v.z = min(min_v.z, ob_min.z)
+            max_v.x = max(max_v.x, ob_max.x)
+            max_v.y = max(max_v.y, ob_max.y)
+            max_v.z = max(max_v.z, ob_max.z)
+    return min_v, max_v
 
 
 def look_at(obj: Any, target: Any) -> None:
     # Aim object local -Z toward the target, keeping +Y as up
-    direction = (target - obj.location)
+    direction = target - obj.location
     if direction.length == 0:
         return
-    quat = direction.normalized().to_track_quat('-Z', 'Y')  # type: ignore[attr-defined]
+    quat = direction.normalized().to_track_quat("-Z", "Y")
     obj.rotation_euler = quat.to_euler()
 
 
 def position_camera_to_fit_bounds(cam: Any, bounds: Tuple[Any, Any]) -> None:
     min_v, max_v = bounds
     center = (min_v + max_v) * 0.5
-    dims = (max_v - min_v)
+    dims = max_v - min_v
 
     # Configure camera lens and sensor fit before computing FOV
     cam_data = cam.data
     cam_data.lens = CAMERA_LENS_MM  # mm
     try:
-        cam_data.sensor_fit = 'AUTO'  # type: ignore[attr-defined]
+        cam_data.sensor_fit = "AUTO"
     except Exception:
         pass
 
     # Determine a conservative FOV (use smaller of angle_x/angle_y)
-    angle_x = getattr(cam_data, 'angle_x', None)
-    angle_y = getattr(cam_data, 'angle_y', None)
+    angle_x = getattr(cam_data, "angle_x", None)
+    angle_y = getattr(cam_data, "angle_y", None)
     if not isinstance(angle_x, (int, float)) or angle_x <= 0:
         angle_x = 0.9  # fallback ~51°
     if not isinstance(angle_y, (int, float)) or angle_y <= 0:
         angle_y = 0.9
     fov = min(angle_x, angle_y)
 
-    max_dim = max(dims.x, dims.y, dims.z)  # type: ignore[attr-defined]
+    max_dim = max(dims.x, dims.y, dims.z)
     distance = (max_dim * 0.5) / max(1e-4, math.tan(fov * 0.5)) * PADDING
 
     # Place camera on a diagonal offset, and look at center
@@ -225,7 +239,8 @@ def position_camera_to_fit_bounds(cam: Any, bounds: Tuple[Any, Any]) -> None:
             for co in corners:
                 try:
                     v = world_to_camera_view(scene, cam, co)
-                except Exception:
+                except Exception as exc:  # Log and skip points not visible to camera
+                    print(f"⚠️  world_to_camera_view failed for a corner point: {exc}")
                     continue
                 xs.append(float(v.x))
                 ys.append(float(v.y))
@@ -256,19 +271,28 @@ def configure_render(output_path: str) -> None:
         raise RuntimeError("No active scene found; cannot configure render")
     ensure_dir(os.path.dirname(output_path))
 
-    # Choose an available render engine across Blender versions
+    # Use Eevee Next explicitly for latest Blender versions
     try:
-        scene.render.engine = 'BLENDER_EEVEE'  # type: ignore[attr-defined]
-    except Exception:
-        try:
-            scene.render.engine = 'BLENDER_EEVEE_NEXT'  # type: ignore[attr-defined]
-        except Exception:
-            scene.render.engine = 'CYCLES'  # type: ignore[attr-defined]
+        cast(Any, scene.render).engine = "BLENDER_EEVEE_NEXT"
+        print("[render_snapshot] Using render engine: BLENDER_EEVEE_NEXT")
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to set render engine to BLENDER_EEVEE_NEXT. "
+            "Ensure you're on a Blender version that supports Eevee Next."
+        ) from exc
+
+    if scene.camera is None:
+        raise RuntimeError("No camera set in the scene; cannot render")
+
+    # Check if the scene.camera.data is of type Camera
+    if not isinstance(scene.camera.data, bpy.types.Camera):
+        raise RuntimeError("Scene camera is not of type Camera")
+
     # Reliability tweaks
-    scene.camera.data.clip_start = 0.01  # type: ignore[attr-defined]
-    scene.camera.data.clip_end = 2000.0  # type: ignore[attr-defined]
-    scene.render.image_settings.file_format = 'PNG'
-    scene.render.image_settings.color_mode = 'RGBA'
+    scene.camera.data.clip_start = 0.01
+    scene.camera.data.clip_end = 2000.0
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.color_mode = "RGBA"
     scene.render.resolution_x = 1920
     scene.render.resolution_y = 1080
     scene.render.resolution_percentage = 100
@@ -298,7 +322,13 @@ def _project_bounds_onto_plane(dims: Vector, view_dir: Vector) -> tuple[float, f
     return float(width), float(height)
 
 
-def position_camera_orthographic(cam: Any, bounds: tuple[Any, Any], view_dir: Vector, up_hint: Optional[Vector] = None, pad: float = 1.05) -> None:
+def position_camera_orthographic(
+    cam: Any,
+    bounds: tuple[Any, Any],
+    view_dir: Vector,
+    up_hint: Optional[Vector] = None,
+    pad: float = 1.05,
+) -> None:
     """Place cam as orthographic technical view aimed at bounds center.
     - view_dir: direction from object toward camera (camera looks from center+view_dir)
     - up_hint: preferred up vector; defaults to world +Z with adjustments
@@ -307,7 +337,7 @@ def position_camera_orthographic(cam: Any, bounds: tuple[Any, Any], view_dir: Ve
     """
     min_v, max_v = bounds
     center = (min_v + max_v) * 0.5
-    dims = (max_v - min_v)
+    dims = max_v - min_v
 
     # Determine up vector: avoid parallel to view_dir
     up = up_hint or Vector((0, 0, 1))
@@ -324,11 +354,11 @@ def position_camera_orthographic(cam: Any, bounds: tuple[Any, Any], view_dir: Ve
 
     # Switch to ORTHO
     cam_data = cam.data
-    cam_data.type = 'ORTHO'  # type: ignore[attr-defined]
+    cam_data.type = "ORTHO"
 
     # Compute required ortho scale from projected width/height and render aspect
     scene = bpy.context.scene
-    if scene is None or getattr(scene, 'render', None) is None:
+    if scene is None or getattr(scene, "render", None) is None:
         aspect = 16 / 9
     else:
         aspect = scene.render.resolution_x / max(1, scene.render.resolution_y)
@@ -368,7 +398,7 @@ def render_once(output_path: str, offset_dir_override: Optional[Vector] = None) 
             position_camera_to_fit_bounds(cam_obj, bounds)
 
     configure_render(output_path)
-    bpy.ops.render.render(write_still=True)  # type: ignore[attr-defined]
+    bpy.ops.render.render(write_still=True)
     print(f"[render_snapshot] Render complete -> {output_path}")
 
 
@@ -402,7 +432,7 @@ def main() -> None:
             out = os.path.join(subdir, f"snapshot_ortho_{tag}.png")
             position_camera_orthographic(cam_obj, bounds, view_dir=view_dir)
             configure_render(out)
-            bpy.ops.render.render(write_still=True)  # type: ignore[attr-defined]
+            bpy.ops.render.render(write_still=True)
             print(f"[render_snapshot] Ortho render complete -> {out}")
 
 

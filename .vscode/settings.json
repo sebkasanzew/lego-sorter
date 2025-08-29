@@ -28,6 +28,9 @@
   "files.associations": {
     "*.py": "python"
   },
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.extraPaths": ["./blender", "./utils"],
+  // No custom stubPath; use site-packages (fake-bpy-module) and typeshed
   "python.analysis.autoImportCompletions": true,
   "python.analysis.completeFunctionParens": true,
   "python.analysis.diagnosticMode": "workspace",
@@ -35,18 +38,13 @@
     "reportMissingImports": "warning",
     "reportMissingModuleSource": "warning"
   },
-  "python.analysis.extraPaths": [
-    "blender",
-    "./utils"
-  ],
   "python.analysis.ignore": [
     "**/node_modules/**",
     "**/.git/**"
   ],
   "python.analysis.useLibraryCodeForTypes": false,
-  "python.analysis.stubPath": "./typings-project",
-  "python.analysis.typeCheckingMode": "basic",
-  "python.defaultInterpreterPath": "/usr/bin/python3",
+  // Use the workspace interpreter that has fake-bpy-module installed
+  "python.defaultInterpreterPath": "/Users/sebastian/.pyenv/versions/3.13.5/bin/python",
   "python.linting.enabled": true,
   "python.linting.flake8Args": [
     "--ignore=E501,W503,F401"
