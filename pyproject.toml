@@ -4,15 +4,35 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lego-sorter"
-version = "1.0.0"
-description = "Blender-based simulation for sorting LEGO parts"
+version = "0.1.0"
+description = "Blender-based simulation for sorting LEGO parts using physics and MCP remote control"
+readme = "README.md"
 authors = [
     {name = "LEGO Sorter Project"}
+]
+keywords = [
+    "blender",
+    "lego",
+    "simulation",
+    "physics",
+    "mcp",
+    "model-context-protocol",
+    "sorting",
+    "rigidbody",
+    "ldraw",
+    "automation"
 ]
 requires-python = ">=3.10"
 dependencies = [
     "fake-bpy-module-latest==20251003"
 ]
+
+[project.urls]
+Homepage = "https://github.com/sebkasanzew/lego-sorter"
+Documentation = "https://github.com/sebkasanzew/lego-sorter#readme"
+Repository = "https://github.com/sebkasanzew/lego-sorter"
+Issues = "https://github.com/sebkasanzew/lego-sorter/issues"
+Inspiration = "https://coral.ai/projects/teachable-sorter/"
 
 [tool.setuptools]
 # Prevent setuptools from auto-discovering packages in this flat repo layout.

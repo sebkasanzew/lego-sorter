@@ -67,7 +67,7 @@ To avoid scattering `# type: ignore` and to get solid IntelliSense:
 - Ensure VS Code uses a Python interpreter where the package is installed (see Command Palette: Python: Select Interpreter).
 - Keep `.vscode/settings.json` simple and rely on site-packages for stubs:
    - Use `python.analysis.extraPaths` only for project source roots (e.g., `blender/`, `utils/`).
-   - If you have a local `typings/` folder, only keep project-specific additions there; avoid shipping full `bpy` or `mathutils` copies that may shadow the PyPI stubs. If you don’t need local additions, remove `typings/` or point `python.analysis.stubPath` elsewhere.
+   - If you have a local `typings/` folder, only keep project-specific additions there; avoid shipping full `bpy` or `mathutils` copies that may shadow the PyPI stubs. If you don't need local additions, remove `typings/` or point `python.analysis.stubPath` elsewhere.
 - Suggested Pylance knobs:
    - `python.analysis.typeCheckingMode`: `basic` (current) or `standard` if you want more coverage.
    - Optionally set `python.analysis.useLibraryCodeForTypes` to `false` to rely on stubs only.
@@ -97,6 +97,17 @@ Minimal example
    - `if isinstance(bpy.context.active_object, Object):`
          - `obj = bpy.context.active_object`
    - `# Now `obj` is either an Object or None; guard before use`
+
+Special case: Blender Object.data polymorphism
+- Blender's `Object.data` is typed as `Union[Mesh, Curve, Camera, Light, ...]` in stubs
+- The stubs cannot express: "when `obj.type == 'MESH'`, then `obj.data: Mesh`"
+- For these cases, use runtime checks and document the limitation:
+   ```python
+   if obj.type == 'MESH' and obj.data and hasattr(obj.data, 'materials'):
+       # Runtime check guarantees obj.data is Mesh despite stub warnings
+       materials = obj.data.materials  # Pylance may warn - this is a stub limitation
+   ```
+- Alternative: encapsulate in helper functions with clear docstrings explaining the limitation
 
 This keeps type-checkers happy without silencing them globally.
 
