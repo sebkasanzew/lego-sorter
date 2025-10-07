@@ -11,7 +11,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "fake-bpy-module-latest==20250630"
+    "fake-bpy-module-latest==20251003"
 ]
 
 [tool.setuptools]
