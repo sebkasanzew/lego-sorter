@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tube splitting mechanism for sorting buckets
 - Color detection logic for part classification
 
+### Added
+- **Documentation Optimization for AI Agents** (2025-10-07):
+  - `QUICK_REFERENCE.md` - Concise 10-task quick reference (150 lines)
+  - Cross-references between all documentation files for better navigation
+  - Executive summary in `docs/ARCHITECTURE.md` for quick scanning
+  - Expanded Pylance/VSCode setup in `docs/TYPE_IGNORE_GUIDE.md`
+
+### Changed
+- **Streamlined AGENTS.md** from 304 to ~180 lines (40% reduction):
+  - Removed redundant MCP setup details (kept in README.md)
+  - Moved Pylance/typing configuration to TYPE_IGNORE_GUIDE.md
+  - Moved detailed workflow patterns to ARCHITECTURE.md
+  - Added clear documentation map with cross-references
+- **Enhanced documentation discoverability**:
+  - Added navigation headers to all major documentation files
+  - Linked related documents for easier AI agent navigation
+  - Structured information hierarchy for context window efficiency
+
 ## [0.1.0] - 2025-01-16
 
 ### Added

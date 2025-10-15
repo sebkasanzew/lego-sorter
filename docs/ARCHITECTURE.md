@@ -1,6 +1,47 @@
 # System Architecture
 
-## Overview
+> **Quick Reference**: See [QUICK_REFERENCE.md](../QUICK_REFERENCE.md) for common tasks  
+> **Terminology**: See [GLOSSARY.md](GLOSSARY.md) for definitions
+
+## Executive Summary
+
+**What**: Physics-based Blender simulation of a LEGO sorting machine with code-driven scene generation (no binary .blend files).
+
+**How**: Python scripts → MCP protocol → Blender → Scene state (ephemeral, recreated each run).
+
+**Why Code-Driven**:
+- ✅ Full Git version control (no binary diffs)
+- ✅ Complete reproducibility from source
+- ✅ Independent component testing
+- ✅ Automated CI/CD possible
+
+**Key Components**:
+1. **MCP Bridge** (`utils/blender_mcp_client.py`) - JSON over TCP socket to Blender
+2. **Blender Scripts** (`blender/*.py`) - Auto-executable scene generators
+3. **Pipeline** (`run_lego_sorter.py`) - Orchestrates 5-step workflow
+
+**Standard Pipeline** (180 seconds total):
+```
+clear_scene → create_bucket → create_conveyor → import_parts → setup_physics
+   (~2s)          (~4s)            (~8s)            (~45s)          (~6s)
+```
+
+**Data Flow**: Script file → MCP client → TCP socket → Blender executes → Result returned
+
+**Scene Philosophy**: Ephemeral state, cleared and recreated on each run. No persistent .blend files.
+
+**External Dependencies**:
+- LDraw library (LEGO geometry)
+- BlenderMCP addon (remote control)
+- fake-bpy-module (type hints)
+
+**Physics Model**: Realistic LEGO properties (2g mass, 0.9 friction), gravity simulation with rigid bodies.
+
+**See below for detailed component descriptions, design decisions, and implementation patterns.**
+
+---
+
+## Detailed Overview
 
 The LEGO Sorter is a physics-based simulation that models a complete automated sorting system. The architecture separates script generation (Python), scene control (MCP protocol), and rendering (Blender) to enable reproducible, code-driven scene generation.
 
@@ -8,24 +49,24 @@ The LEGO Sorter is a physics-based simulation that models a complete automated s
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Development Machine                      │
-│                                                               │
-│  ┌─────────────────┐         ┌──────────────────┐          │
-│  │  VSCode/Editor  │◄───────►│  Python Scripts  │          │
-│  │                 │         │  (blender/*.py)  │          │
-│  └─────────────────┘         └────────┬─────────┘          │
-│           │                            │                     │
-│           │                            │                     │
-│           ▼                            ▼                     │
-│  ┌─────────────────────────────────────────────────────┐   │
+│                     Development Machine                     │
+│                                                             │
+│  ┌─────────────────┐         ┌──────────────────┐           │
+│  │  VSCode/Editor  │◄───────►│  Python Scripts  │           │
+│  │                 │         │  (blender/*.py)  │           │
+│  └─────────────────┘         └────────┬─────────┘           │
+│           │                           │                     │
+│           │                           │                     │
+│           ▼                           ▼                     │
+│  ┌──────────────────────────────────────────────────────┐   │
 │  │           BlenderMCPClient (utils/)                  │   │
 │  │  • Socket connection (localhost:9876)                │   │
 │  │  • JSON command protocol                             │   │
 │  │  • Script execution & result handling                │   │
 │  └──────────────────────┬───────────────────────────────┘   │
-│                         │                                    │
-│                         │ TCP Socket                         │
-│                         │                                    │
+│                         │                                   │
+│                         │ TCP Socket                        │
+│                         │                                   │
 │  ┌──────────────────────▼───────────────────────────────┐   │
 │  │              Blender (with MCP Addon)                │   │
 │  │  • Scene state (collections, objects)                │   │
@@ -33,7 +74,7 @@ The LEGO Sorter is a physics-based simulation that models a complete automated s
 │  │  • Rendering engine (Eevee/Cycles)                   │   │
 │  │  • LDraw import (external geometry)                  │   │
 │  └──────────────────────────────────────────────────────┘   │
-│                                                               │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,7 +135,7 @@ Start
 Python Script                  MCP Client                    Blender
      │                             │                            │
      ├─execute_script_file()──────►│                            │
-     │                             ├─connect(localhost:9876)────►│
+     │                             ├─connect(localhost:9876)───►│
      │                             │                            │
      │                             ├─send(JSON command)────────►│
      │                             │                            │

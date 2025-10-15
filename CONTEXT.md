@@ -1,5 +1,7 @@
 # Development Context
 
+> **Quick Start**: See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for common tasks  
+> **AI Instructions**: See [AGENTS.md](AGENTS.md) for development guidance  
 > **Last Updated**: 2025-10-07
 
 ## Current Focus

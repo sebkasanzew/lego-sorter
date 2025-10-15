@@ -1,304 +1,197 @@
 # LEGO Sorter AI Agent Instructions
 
+> **Quick Start**: See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for the 10 most common tasks  
+> **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete system design  
+> **Terminology**: See [docs/GLOSSARY.md](docs/GLOSSARY.md) for definitions  
+> **Type Hints**: See [docs/TYPE_IGNORE_GUIDE.md](docs/TYPE_IGNORE_GUIDE.md) for Pylance setup
+
 ## Project Overview
 
-This is a Blender-based simulation for a LEGO sorting machine that uses the Model Context Protocol (MCP) to remotely control Blender. The project simulates the complete sorting pipeline: collection → conveyor → separation → identification → sorting → output.
+Blender-based simulation of a LEGO sorting machine using Model Context Protocol (MCP) for remote Blender control. The simulation models the complete pipeline: **collection → conveyor → separation → identification → sorting → output**.
 
-## Architecture & Key Components
+**Key Principle**: Code-driven scene generation with **zero binary dependencies** (no .blend files). Everything is reproducible from Python scripts.
 
-### 1. MCP-Blender Bridge (`utils/blender_mcp_client.py`)
+## Architecture Overview
 
-- **Critical**: All Blender operations go through MCP server on `localhost:9876`
-- Use `BlenderMCPClient` class for remote script execution
-- Always test connection with `test_connection()` before operations
-- Scripts must be executed via `execute_script_file()` or `execute_code()`
-- **Socket Communication**: JSON commands over TCP with 8KB response buffer
+```
+Python Scripts (blender/*.py)
+         ↓
+MCP Client (utils/blender_mcp_client.py)
+         ↓ TCP Socket (localhost:9876)
+Blender + MCP Addon
+         ↓
+Scene State (ephemeral, recreated each run)
+```
 
-### 2. Blender Script Structure (`blender/` directory)
+**Critical**: All Blender operations go through MCP server. Always test connection before operations.
 
-- **Scene Management**: `clear_scene.py` - Always run first to reset state
-- **Object Creation**: `create_sorting_bucket.py` - Boolean operations for hollow geometry
-- **Conveyor System**: `create_conveyor_belt.py` - Inclined belt with friction-based transport
-- **Asset Import**: `import_lego_parts.py` - LDraw file import with vertical arrangement
-- **Physics Animation**: `animate_lego_physics.py` - Realistic gravity simulation and collision detection
-- **Pattern**: Scripts use `main()` function and auto-execute when imported (no `if __name__ == "__main__"` checks)
-
-### 3. Workflow Orchestration (`run_lego_sorter.py`)
-
-- **Standard Pipeline**: clear → create bucket → create conveyor → import parts → setup physics
-- **Error Handling**: Checks file existence before execution
-- **User Feedback**: Emoji-based progress indicators (🧱, 🔍, 🎯, 1️⃣, 2️⃣, 3️⃣, 🎉)
-- **Path Management**: Uses `sys.path.insert()` to add utils directory dynamically
-- **Code-Driven Scene**: Complete scene recreation from Python scripts only
-
-## Critical Developer Workflows
-
-### Essential Setup Commands
+## Essential Setup
 
 ```bash
-# Install dependencies (includes fake-bpy-module for type hints)
+# Install dependencies
 pip install -r requirements.txt
 
-# Run complete simulation
+# Start Blender MCP Server (REQUIRED)
+# 1. Open Blender
+# 2. Press N → BlenderMCP tab → "Connect to Claude"
+
+# Run complete pipeline
 python run_lego_sorter.py
 
-# Test MCP connection only
+# Test MCP connection
 python utils/blender_mcp_client.py
 ```
 
-### Blender MCP Server Setup (Required for ALL operations)
+**For detailed setup**: See [README.md](README.md)
 
-1. Open Blender → 3D View sidebar (N key) → BlenderMCP tab → "Connect to Claude"
-2. Verify connection on `localhost:9876` before any script execution
-3. **Never execute bpy commands without MCP connection**
+## Core Components
 
-### VSCode Configuration
+### MCP-Blender Bridge (`utils/blender_mcp_client.py`)
+- JSON over TCP socket communication
+- Execute scripts: `client.execute_script_file('blender/script.py')`
+- Always check connection: `client.test_connection()`
 
-- **Type Hints**: `fake-bpy-module-latest` provides bpy API stubs
-- **Path Configuration**: `.vscode/settings.json` adds `blender/` and `utils/` to analysis paths
-- **Linting**: Flake8 enabled with E501, W503, F401 ignored for Blender compatibility
+### Blender Scripts (`blender/` directory)
 
-### Typing & Pylance setup (recommended)
+| Script | Purpose |
+|--------|---------|
+| `clear_scene.py` | Reset scene (always run first) |
+| `create_sorting_bucket.py` | Hollow bucket with boolean operations |
+| `create_conveyor_belt.py` | Inclined transport with physics |
+| `import_lego_parts.py` | LDraw part import (70+ parts) |
+| `animate_lego_physics.py` | Rigid body simulation setup |
+| `setup_lighting.py` | Three-point lighting |
+| `render_snapshot.py` | Multi-view orthographic renders |
 
-To avoid scattering `# type: ignore` and to get solid IntelliSense:
+### Standard Pipeline (`run_lego_sorter.py`)
 
-- Prefer versioned Blender stubs from PyPI that match your Blender version exactly:
-   - macOS example: install one of `fake-bpy-module-4.2`, `fake-bpy-module-4.3`, or the exact version you use. Use `fake-bpy-module-latest` only when you are on the latest daily build.
-- Ensure VS Code uses a Python interpreter where the package is installed (see Command Palette: Python: Select Interpreter).
-- Keep `.vscode/settings.json` simple and rely on site-packages for stubs:
-   - Use `python.analysis.extraPaths` only for project source roots (e.g., `blender/`, `utils/`).
-   - If you have a local `typings/` folder, only keep project-specific additions there; avoid shipping full `bpy` or `mathutils` copies that may shadow the PyPI stubs. If you don't need local additions, remove `typings/` or point `python.analysis.stubPath` elsewhere.
-- Suggested Pylance knobs:
-   - `python.analysis.typeCheckingMode`: `basic` (current) or `standard` if you want more coverage.
-   - Optionally set `python.analysis.useLibraryCodeForTypes` to `false` to rely on stubs only.
-- Prefer real types over `Any`:
-   - `from bpy.types import Object, Material, Collection, Operator` and annotate function parameters/returns accordingly.
-   - Use `mathutils.Vector` directly (provided by the stubs) instead of custom vector stubs.
-  
-Important note about VS Code / Pylance and Blender typings
-- Use the `fake-bpy-module` (installed into your Python environment) for accurate Blender type stubs instead of the workspace `typings/` folder. Local `typings/` can shadow the site-package stubs and cause confusing diagnostics.
-- Set Pylance's stub path to an empty project folder (we use `./typings-project`) to ensure Pylance picks up the `fake-bpy-module` from site-packages. Example `.vscode/settings.json` snippet:
-
-   "python.analysis.stubPath": ["./typings-project"]
-
-- If you currently have a `typings/` folder in the repo, archive or remove it (or move the useful bits into proper stubs) — do not keep it in the workspace root while relying on the PyPI stubs.
-- If you must keep custom stubs, place them in a different folder and document that in `.vscode/settings.json` explicitly; avoid naming it `typings` at the project root.
-- When you must downcast dynamic Blender attributes, prefer `typing.cast[...]` around the narrowest `bpy.types.*` type instead of `# type: ignore`.
-
-Minimal example
-- Before:
-   - `import bpy  # type: ignore`
-   - `obj: Any = bpy.context.active_object  # type: ignore`
-- After (preferred pattern without cast):
-   - `import bpy`
-   - `from typing import Optional`
-   - `from bpy.types import Object`
-   - `obj: Optional[Object] = None`
-   - `if isinstance(bpy.context.active_object, Object):`
-         - `obj = bpy.context.active_object`
-   - `# Now `obj` is either an Object or None; guard before use`
-
-Special case: Blender Object.data polymorphism
-- Blender's `Object.data` is typed as `Union[Mesh, Curve, Camera, Light, ...]` in stubs
-- The stubs cannot express: "when `obj.type == 'MESH'`, then `obj.data: Mesh`"
-- For these cases, use runtime checks and document the limitation:
-   ```python
-   if obj.type == 'MESH' and obj.data and hasattr(obj.data, 'materials'):
-       # Runtime check guarantees obj.data is Mesh despite stub warnings
-       materials = obj.data.materials  # Pylance may warn - this is a stub limitation
-   ```
-- Alternative: encapsulate in helper functions with clear docstrings explaining the limitation
-
-This keeps type-checkers happy without silencing them globally.
+```python
+# Execution order (critical)
+1. clear_scene.py          # Reset
+2. create_sorting_bucket.py # Geometry
+3. create_conveyor_belt.py  # Transport
+4. import_lego_parts.py     # Assets
+5. animate_lego_physics.py  # Physics
+```
 
 ## Project-Specific Conventions
 
 ### Blender Script Patterns
 
-- **Auto-execution**: All scripts end with `main()` call - no conditional `if __name__ == "__main__"`
-- **Collection Management**: Objects organized in named collections (`"bucket"`, `"lego_parts"`)
-- **Error Handling**: Extensive null checks for `bpy.context.active_object`
-- **Geometry Creation**: Boolean operations for complex shapes (see bucket creation)
-- **Function Signatures**: Use type hints with `Optional[Any]` and `Tuple` for Blender objects
+```python
+# All scripts follow this pattern:
+def main():
+    """Main entry point."""
+    # Implementation
+    pass
+
+# Auto-execute (no if __name__ check)
+main()
+```
+
+**Key Patterns**:
+- **Auto-execution**: Scripts end with `main()` call
+- **Collection Management**: Objects in named collections (`"bucket"`, `"lego_parts"`, `"conveyor_belt"`)
+- **Null Checks**: Always check `bpy.context.active_object` for None
+- **Boolean Operations**: Use DIFFERENCE modifier for hollow geometry
+- **Type Hints**: Use `Optional[Object]` and guard with isinstance/None checks (see [TYPE_IGNORE_GUIDE.md](docs/TYPE_IGNORE_GUIDE.md))
 
 ### File Organization
 
-- `blender/` - Blender-specific scripts (auto-executable)
-- `utils/` - MCP client utilities
-- `docs/` - Testing and setup guides
-- `typings/` - Custom type stubs for bpy and mathutils
-- **Pattern**: Scripts reference each other via relative paths from project root
-
-### LDraw Integration
-
-- **Path Convention**: `/Applications/Studio 2.0/ldraw/parts/` (macOS default)
-- **Common Parts List**: 70+ curated LEGO parts by popularity in `import_lego_parts.py`
-- **Vertical Arrangement**: Parts stacked with calculated spacing for physics simulation
-- **Part Naming**: Uses official LDraw part numbers (e.g., "4073", "3023", "3024")
-
-## Complete Workflow & Code-Driven Scene Configuration
-
-### Philosophy: Zero Binary Dependencies
-
-The entire Blender scene is generated through Python scripts - **no .blend files are saved or required**. This ensures:
-
-- **Reproducibility**: Anyone can recreate the exact scene from code
-- **Version Control**: All scene changes are trackable through Git
-- **Modularity**: Individual components can be developed and tested independently
-- **Automation**: Complete CI/CD pipeline possible for scene generation
-
-### Standard Execution Workflow
-
-1. **Scene Reset** (`clear_scene.py`)
-
-   - Removes all mesh objects, lights, cameras
-   - Clears all collections except default scene collection
-   - Resets physics world and animation data
-   - Provides clean slate for scene generation
-
-2. **Geometry Creation** (Various scripts)
-
-   - `create_sorting_bucket.py`: Main collection bucket with hollow interior
-   - `create_conveyor_belt.py`: Inclined transport system with friction physics
-   - Each script handles its own collection management and object naming
-
-3. **Asset Import** (`import_lego_parts.py`)
-
-   - Imports real LEGO parts from LDraw library
-   - Arranges parts vertically for realistic drop physics
-   - Assigns physics properties (mass: 2g, friction: 0.9)
-
-4. **Physics & Animation Setup** (`animate_lego_physics.py`)
-   - Configures rigid body simulation
-   - Sets up realistic collision detection
-   - Animates conveyor belt movement through material displacement
-
-### Script Execution Patterns
-
-**Sequential Execution**: Scripts run in specific order through `run_lego_sorter.py`
-
-```python
-# Standard pipeline
-scripts = [
-    "clear_scene.py",
-    "create_sorting_bucket.py",
-    "create_conveyor_belt.py",
-    "import_lego_parts.py",
-    "animate_lego_physics.py"
-]
+```
+lego-sorter/
+├── blender/          # Blender scripts (auto-executable)
+├── utils/            # MCP client, validation, debug helpers
+├── docs/             # Architecture, guides, glossary
+├── tests/            # Test scenarios
+├── renders/          # Output images (not in git)
+└── AGENTS.md         # This file
 ```
 
-**Independent Execution**: Each script can run standalone for development/testing
-
-```bash
-# Test individual components
-python -c "from utils.blender_mcp_client import BlenderMCPClient; client = BlenderMCPClient(); client.execute_script_file('blender/create_conveyor_belt.py')"
-```
-
-**MCP Remote Execution**: All scripts execute through MCP bridge for remote Blender control
-
-### Scene Configuration Philosophy
-
-**Declarative Geometry**: Objects defined through code parameters, not manual modeling
-
-- Bucket dimensions, conveyor length/angle, part spacing all configurable
-- Boolean operations create complex shapes (hollow bucket via DIFFERENCE modifier)
-- Physics properties embedded in object creation functions
-
-**Collection-Based Organization**: Logical grouping prevents object conflicts
-
-- `"bucket"`: Sorting container and related geometry
-- `"conveyor_belt"`: Transport system components and supports
-- `"lego_parts"`: Imported LEGO pieces with physics
-- Each script manages its own collection lifecycle
-
-**Material & Animation Integration**: Visual and physics properties unified
-
-- Conveyor belt materials include animated texture displacement
-- LEGO parts receive realistic PBR materials during import
-- Animation keyframes set programmatically for belt movement
-
-### Configuration Management
-
-**Parameter Centralization**: Key values configurable at script level
+### Configuration Constants
 
 ```python
-# In create_conveyor_belt.py
-CONVEYOR_LENGTH = 1.5      # Belt length in Blender units
-CONVEYOR_ANGLE = 0.15      # Incline angle in radians
-BELT_FRICTION = 0.8        # Physics friction coefficient
-```
-
-**LDraw Path Configuration**: External asset paths centralized
-
-```python
-# In import_lego_parts.py
-LDRAW_PARTS_PATH = "/Applications/Studio 2.0/ldraw/parts/"
-COMMON_PARTS = ["3001", "3003", "3004", ...]  # Popular LEGO parts
-```
-
-**Physics Constants**: Realistic LEGO simulation parameters
-
-```python
-LEGO_MASS = 0.002         # 2 grams per typical LEGO brick
-LEGO_FRICTION = 0.9       # High friction for realistic stacking
+# Physics (from import_lego_parts.py, animate_lego_physics.py)
+LEGO_MASS = 0.002         # 2 grams per typical brick
+LEGO_FRICTION = 0.9       # High friction coefficient
 GRAVITY_SCALE = 9.81      # Standard Earth gravity
+
+# LDraw (from import_lego_parts.py)
+LDRAW_PARTS_PATH = "/Applications/Studio 2.0/ldraw/parts/"  # macOS
+
+# Conveyor (from create_conveyor_belt.py)
+CONVEYOR_LENGTH = 1.5     # Blender units
+CONVEYOR_ANGLE = 0.15     # Radians (~8.6°)
+BELT_FRICTION = 0.8       # Physics coefficient
 ```
 
-## Integration Points
+## Code-Driven Scene Philosophy
 
-### MCP Communication Protocol
+**Zero Binary Dependencies**: No .blend files saved or required.
 
-- **Socket-based**: JSON commands over TCP connection
-- **Command Structure**: `{"type": "execute_code", "params": {"code": "..."}}`
-- **Response Format**: `{"status": "success/error", "result": "...", "message": "..."}`
-- **Buffer Size**: 8KB response buffer for large script outputs
+**Benefits**:
+- Full Git version control (no binary diffs)
+- Complete reproducibility from source
+- Independent component development
+- Automated testing possible
 
-### Blender API Usage
+**Scene State**: Ephemeral - cleared and recreated on each run.
 
-- **Operations**: Prefer `bpy.ops` for scene manipulation
-- **Object Access**: Always check `bpy.context.active_object` for null
-- **Collections**: Use `bpy.data.collections.new()` and link to scene
-- **Geometry**: bmesh operations for complex mesh modifications
-- **Boolean Operations**: Create hollow objects using DIFFERENCE modifier
-- **Physics**: Rigid body simulation with realistic LEGO properties (mass: 2g, friction: 0.9)
+## Key Integration Points
+
+### MCP Communication
+- Protocol: JSON over TCP socket
+- Port: `localhost:9876`
+- Command: `{"type": "execute_code", "params": {"code": "..."}}`
+- Response: `{"status": "success/error", "result": "...", "message": "..."}`
+
+### Blender API Patterns
+- Operations: `bpy.ops.*` for scene manipulation
+- Data access: `bpy.data.objects.get()` with None checks
+- Collections: `bpy.data.collections.new()` + link to scene
+- Physics: Rigid body with ACTIVE (dynamic) or PASSIVE (static) types
 
 ### External Dependencies
+- **LDraw Library**: LEGO part geometry (must be installed)
+- **BlenderMCP Addon**: Remote control (must be enabled in Blender)
+- **fake-bpy-module**: Type hints for IDE (PyPI package)
 
-- **LDraw Library**: Required for LEGO part geometry
-- **BlenderMCP Addon**: Must be enabled in Blender
-- **fake-bpy-module**: Provides type hints for development
-- **Development Tools**: Black, Flake8, MyPy for code quality
+## Testing & Validation
 
-## Key Files for Understanding
+```bash
+# Full pipeline test
+python run_lego_sorter.py
 
-- `run_lego_sorter.py` - Main orchestration logic and workflow execution
-- `utils/blender_mcp_client.py` - MCP communication patterns and remote script execution
-- `blender/clear_scene.py` - Scene reset and cleanup procedures
-- `blender/create_sorting_bucket.py` - Complex geometry creation with boolean operations
-- `blender/create_conveyor_belt.py` - Transport system with physics and animation
-- `blender/import_lego_parts.py` - Asset import and physics configuration logic
-- `blender/animate_lego_physics.py` - Physics simulation and animation setup
-- `README.md` - Complete project context and real-world inspiration
+# Validate scene state
+python -c "from utils.blender_mcp_client import BlenderMCPClient; \
+BlenderMCPClient().execute_script_file('utils/validate_scene.py')"
 
-## Testing & Debugging
+# Debug helpers (visual markers, state inspection)
+# See utils/blender_debug.py for add_debug_marker(), etc.
+```
 
-### Quick Test Methods
+**Common Issues**: See [QUICK_REFERENCE.md](QUICK_REFERENCE.md#troubleshooting-quick-fixes)
 
-1. **Complete Workflow**: Run `python run_lego_sorter.py` for full scene generation
-2. **Direct Blender**: Copy script to Blender's script editor and run for immediate testing
-3. **MCP Test**: Use `python utils/blender_mcp_client.py` to verify connection
-4. **Individual Scripts**: Execute single scripts via MCP client for component testing
-5. **Scene Validation**: Use `clear_scene.py` followed by specific script to test in isolation
+## Documentation Map
 
-### Common Issues
+| Need | Document |
+|------|----------|
+| Quick task reference | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) |
+| System design | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Common operations | [docs/COMMON_TASKS.md](docs/COMMON_TASKS.md) |
+| Terminology | [docs/GLOSSARY.md](docs/GLOSSARY.md) |
+| Type hints setup | [docs/TYPE_IGNORE_GUIDE.md](docs/TYPE_IGNORE_GUIDE.md) |
+| Project context | [README.md](README.md) |
+| Version history | [CHANGELOG.md](CHANGELOG.md) |
+| Session state | [CONTEXT.md](CONTEXT.md) |
 
-- **MCP Connection**: Verify Blender addon is connected before script execution
-- **LDraw Path**: Adjust path in `import_lego_parts.py` if parts not found
-- **Collection Cleanup**: Run `clear_scene.py` if objects appear in wrong collections
-- **Script Order**: Always run `clear_scene.py` first to ensure clean state
-- **Physics Setup**: Ensure conveyor and bucket are created before physics animation
+## Physics Simulation Notes
 
-## Physics Simulation Context
+The simulation models real sorting machine physics:
+- Parts fall through bucket hole (0.24 unit diameter)
+- Conveyor belt transports parts upward (friction-based)
+- Physics validated at key frames (see `blender/diagnose_raycast_frame20.py`)
+- Known issue: Occasional desync at frame 20 (under investigation)
 
-The project simulates a real sorting machine workflow - parts should fall through tubes, be identified by cameras, and sorted into buckets. Consider physics properties when adding new geometry or modifying existing objects.
+**For detailed physics debugging**: See [docs/COMMON_TASKS.md](docs/COMMON_TASKS.md#debugging-physics)
+

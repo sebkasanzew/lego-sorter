@@ -1,5 +1,9 @@
 # Common Development Tasks
 
+> **Quick Start**: For the 10 most common operations, see [QUICK_REFERENCE.md](../QUICK_REFERENCE.md)  
+> **Architecture**: See [ARCHITECTURE.md](ARCHITECTURE.md) for design decisions  
+> **Terminology**: See [GLOSSARY.md](GLOSSARY.md) for definitions
+
 Quick reference guide for frequent operations in the LEGO Sorter project.
 
 ## Table of Contents

@@ -1,5 +1,10 @@
 # LEGO Sorter - Blender Simulation
 
+> **Quick Start**: See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for the 10 most common tasks  
+> **For AI Agents**: See [AGENTS.md](AGENTS.md) for development instructions  
+> **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design  
+> **Terminology**: See [docs/GLOSSARY.md](docs/GLOSSARY.md) for definitions
+
 ## Project Goal
 
 The goal of this project is to create a model of a machine capable of sorting LEGO bricks by shape and color. The machine performs this task in several steps:

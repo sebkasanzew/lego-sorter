@@ -157,6 +157,125 @@ if isinstance(bpy.context.active_object, Object):
 
 ## References
 
-- See `AGENTS.md` for full typing guidance
 - Blender type stubs: https://github.com/nutti/fake-bpy-module
 - Type narrowing: https://mypy.readthedocs.io/en/stable/type_narrowing.html
+
+---
+
+## Pylance & VSCode Setup for Optimal Type Checking
+
+### Quick Setup (Recommended)
+
+1. **Install versioned Blender stubs** matching your Blender version:
+   ```bash
+   # For Blender 4.2
+   pip install fake-bpy-module-4.2
+   
+   # For Blender 4.3
+   pip install fake-bpy-module-4.3
+   
+   # For latest development
+   pip install fake-bpy-module-latest
+   ```
+
+2. **Configure VSCode** (`.vscode/settings.json`):
+   ```json
+   {
+     "python.analysis.extraPaths": ["./blender", "./utils"],
+     "python.analysis.stubPath": "./typings-project",
+     "python.analysis.typeCheckingMode": "basic"
+   }
+   ```
+
+3. **Select correct Python interpreter** in VSCode where the package is installed
+
+### Important: Avoid Local `typings/` Folder
+
+**Problem**: Local `typings/` folders at the workspace root can shadow site-packages stubs and cause confusing diagnostics.
+
+**Solution**: 
+- Use `fake-bpy-module` from PyPI (installed in your Python environment)
+- Set `python.analysis.stubPath` to an empty folder (e.g., `./typings-project`)
+- This ensures Pylance picks up stubs from site-packages, not local shadows
+
+**If you have a `typings/` folder**:
+- Archive or remove it
+- Move project-specific stubs to a different folder name
+- Document the custom path in `.vscode/settings.json`
+
+### Advanced Pylance Configuration
+
+**For stricter checking**:
+```json
+{
+  "python.analysis.typeCheckingMode": "standard",
+  "python.analysis.useLibraryCodeForTypes": false
+}
+```
+
+**For project source organization**:
+```json
+{
+  "python.analysis.extraPaths": [
+    "./blender",
+    "./utils",
+    "./tests"
+  ]
+}
+```
+
+### Type Annotation Best Practices
+
+**Prefer real types over `Any`**:
+```python
+# Bad
+from typing import Any
+obj: Any = bpy.context.active_object
+
+# Good
+from typing import Optional
+from bpy.types import Object
+
+obj: Optional[Object] = bpy.context.active_object
+if obj:
+    # obj is now typed as Object
+    print(obj.name)
+```
+
+**Use `typing.cast` for narrowing** (when runtime checks aren't practical):
+```python
+from typing import cast
+from bpy.types import Mesh
+
+# When you KNOW obj.data is a Mesh at this point
+if obj.type == 'MESH' and obj.data:
+    mesh = cast(Mesh, obj.data)
+    # Now mesh is typed as Mesh, not Union[Mesh, Curve, ...]
+```
+
+### Common Pitfalls
+
+| Pitfall | Solution |
+|---------|----------|
+| Stubs not found | Ensure `fake-bpy-module` installed in active Python env |
+| Local typings override | Set `stubPath` to empty folder, remove local `typings/` |
+| Missing type imports | Import from `bpy.types` explicitly |
+| Wrong Blender version | Match stub version to your Blender installation |
+
+### Verification
+
+Test your setup with this script:
+```python
+import bpy
+from bpy.types import Object, Scene
+from typing import Optional
+
+# Should have no type errors
+obj: Optional[Object] = bpy.context.active_object
+scene: Scene = bpy.context.scene  # May warn about Optional, use assert
+
+if obj:
+    print(f"Object: {obj.name}")
+```
+
+**Expected**: No type errors from Pylance (except possibly `scene` Optional warning - use assertion for that)

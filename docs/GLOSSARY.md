@@ -1,5 +1,9 @@
 # Project Glossary
 
+> **Quick Start**: See [QUICK_REFERENCE.md](../QUICK_REFERENCE.md) for common tasks  
+> **Architecture**: See [ARCHITECTURE.md](ARCHITECTURE.md) for system design  
+> **How-To**: See [COMMON_TASKS.md](COMMON_TASKS.md) for detailed examples
+
 Terminology reference for the LEGO Sorter project, covering Blender-specific terms, project concepts, and physics simulation vocabulary.
 
 ---
