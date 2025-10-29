@@ -1,5 +1,5 @@
 {
-  "mcpServers": {
+  "servers": {
     "blender": {
       "command": "uvx",
       "args": ["blender-mcp"]

@@ -1,25 +1,6 @@
 ---
 description: 'Python development and testing agent for LEGO sorter Blender simulation project'
-tools: [
-  'codebase', 
-  'changes', 
-  'edit/editFiles', 
-  'fetch', 
-  'problems', 
-  'runTests', 
-  'search', 
-  'searchResults', 
-  'terminalLastCommand', 
-  'terminalSelection', 
-  'testFailure', 
-  'usages',
-  'vscodeAPI',
-  'extensions',
-  'runCommands',
-  'runTasks',
-  'new',
-  'githubRepo'
-]
+tools: ['edit', 'runNotebooks', 'search', 'new', 'runCommands', 'runTasks', 'upstash/context7/*', 'pylance mcp server/*', 'blender/*', 'usages', 'vscodeAPI', 'problems', 'changes', 'testFailure', 'fetch', 'githubRepo', 'ms-python.python/getPythonEnvironmentInfo', 'ms-python.python/getPythonExecutableCommand', 'ms-python.python/installPythonPackage', 'ms-python.python/configurePythonEnvironment', 'ms-toolsai.jupyter/configureNotebook', 'ms-toolsai.jupyter/listNotebookPackages', 'ms-toolsai.jupyter/installNotebookPackages', 'the0807.uv-toolkit/uv-init', 'the0807.uv-toolkit/uv-sync', 'the0807.uv-toolkit/uv-add', 'the0807.uv-toolkit/uv-add-dev', 'the0807.uv-toolkit/uv-upgrade', 'the0807.uv-toolkit/uv-clean', 'the0807.uv-toolkit/uv-lock', 'the0807.uv-toolkit/uv-venv', 'the0807.uv-toolkit/uv-run', 'the0807.uv-toolkit/uv-script-dep', 'the0807.uv-toolkit/uv-python-install', 'the0807.uv-toolkit/uv-python-pin', 'the0807.uv-toolkit/uv-tool-install', 'the0807.uv-toolkit/uvx-run', 'the0807.uv-toolkit/uv-activate-venv', 'extensions', 'todos', 'runTests']
 ---
 
 # Python Development & Testing Agent
