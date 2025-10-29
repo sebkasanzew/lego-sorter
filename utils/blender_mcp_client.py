@@ -223,7 +223,7 @@ def main():
         print("1. Open Blender")
         print("2. Go to 3D View sidebar (press N)")
         print("3. Find 'BlenderMCP' tab")
-        print("4. Click 'Connect to Claude'")
+        print("4. Click 'Connect to MCP server'")
         print("5. Run this script again")
         return
 

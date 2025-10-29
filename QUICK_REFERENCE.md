@@ -1,17 +1,11 @@
 # Quick Reference - Most Common Tasks
 
-**For detailed examples and edge cases, see [COMMON_TASKS.md](docs/COMMON_TASKS.md)**
-
----
-
 ## 1. Run Complete Pipeline
 
 ```bash
-# Standard execution
-python run_lego_sorter.py
-
-# With debug mode (faster timeouts, more logging)
-BLENDER_MCP_DEBUG=1 python run_lego_sorter.py
+jupyter notebook
+# Open lego_sorter_pipeline.ipynb
+# Run cells sequentially (Shift+Enter)
 ```
 
 ---
@@ -24,120 +18,101 @@ python utils/blender_mcp_client.py
 
 Expected: `✅ Blender MCP server is running on localhost:9876`
 
-**If it fails**: Open Blender → Press `N` → BlenderMCP tab → "Connect to Claude"
+**If fails**: Blender → Press `N` → BlenderMCP tab → "Connect to MCP server"
 
 ---
 
-## 3. Clear Scene and Rebuild
-
-```python
-from utils.blender_mcp_client import BlenderMCPClient
-
-client = BlenderMCPClient()
-client.execute_script_file('blender/clear_scene.py', 'Clear Scene')
-client.execute_script_file('blender/create_sorting_bucket.py', 'Create Bucket')
-```
-
----
-
-## 4. Run Single Script
-
-```python
-from utils.blender_mcp_client import BlenderMCPClient
-
-client = BlenderMCPClient()
-client.execute_script_file('blender/SCRIPT_NAME.py', 'Description')
-```
-
----
-
-## 5. Validate Scene After Changes
-
-```python
-from utils.blender_mcp_client import BlenderMCPClient
-
-client = BlenderMCPClient()
-client.execute_script_file('utils/validate_scene.py', 'Validate Scene')
-```
-
----
-
-## 6. Debug Physics at Specific Frame
-
-```python
-import bpy
-
-frame_number = 20
-bpy.context.scene.frame_set(frame_number)
-
-# Inspect LEGO parts
-parts_col = bpy.data.collections.get("lego_parts")
-if parts_col:
-    for obj in parts_col.objects:
-        print(f"{obj.name}: {obj.location}")
-```
-
-**Run via MCP**: Save as `blender/debug_frame.py` and execute
-
----
-
-## 7. Add Visual Debug Marker
-
-```python
-from utils.blender_debug import add_debug_marker
-
-# Add red marker at position
-add_debug_marker((0, 0, 1), color=(1, 0, 0, 1), name="Debug_Point")
-```
-
----
-
-## 8. Check What Parts Are Imported
+## 3. Quick Experiment
 
 ```bash
-# List all parts in lego_parts collection
-python -c "
-from utils.blender_mcp_client import BlenderMCPClient
-code = '''
-import bpy
-col = bpy.data.collections.get(\"lego_parts\")
-if col:
-    print(f\"Parts: {len(col.objects)}\")
-    for obj in col.objects[:5]:
-        print(f\"  - {obj.name}\")
-'''
-client = BlenderMCPClient()
-client.execute_code(code, 'List Parts')
-"
+jupyter notebook
+# Open quick_experiments.ipynb
+# Run setup cell, then experiment cells
 ```
 
 ---
 
-## 9. Modify Physics Properties
+## 4. Custom Blender Code
 
+In notebook cell:
 ```python
+client.execute_code("""
 import bpy
-
-# Get object
-obj = bpy.data.objects.get("Part_3001")
-if obj and obj.rigid_body:
-    obj.rigid_body.mass = 0.005  # 5 grams
-    obj.rigid_body.friction = 0.95
-    print(f"Updated {obj.name} physics")
+print(f"Objects: {len(bpy.data.objects)}")
+""", "Description")
 ```
 
 ---
 
-## 10. Render Current Frame
+## 5. Check Scene State
 
+In notebook:
 ```python
-from utils.blender_mcp_client import BlenderMCPClient
-
-client = BlenderMCPClient()
-client.execute_script_file('blender/render_snapshot.py', 'Render', timeout=300)
+client.execute_code("""
+import bpy
+for col in bpy.data.collections:
+    print(f"{col.name}: {len(col.objects)} objects")
+""", "Scene Info")
 ```
 
-Output: `renders/frame_XX/` directory with 10 orthographic views
+---
+
+## 6. Clear Scene
+
+In notebook:
+```python
+client.execute_script_file('blender/clear_scene.py', 'Clear')
+```
+
+---
+
+## 7. Create Specific Component
+
+In notebook:
+```python
+client.execute_script_file('blender/create_sorting_bucket.py', 'Bucket')
+client.execute_script_file('blender/create_conveyor_belt.py', 'Conveyor')
+```
+
+---
+
+## 8. Import LEGO Parts
+
+In notebook (takes 5-10 minutes):
+```python
+client.execute_script_file(
+    'blender/import_lego_parts.py',
+    'Import Parts',
+    timeout=600
+)
+```
+
+---
+
+## 9. Setup Physics
+
+In notebook:
+```python
+client.execute_script_file('blender/animate_lego_physics.py', 'Physics')
+```
+
+---
+
+## 10. Validate Scene
+
+In notebook:
+```python
+client.execute_script_file('utils/validate_scene.py', 'Validate')
+```
+
+---
+
+## Troubleshooting
+
+**MCP timeout**: `client = BlenderMCPClient(timeout=600)`  
+**Connection refused**: Restart Blender MCP addon  
+**Import errors**: Check LDraw path in `blender/import_lego_parts.py`  
+**Physics debugging**: Run frame-specific checks in notebook
 
 ---
 

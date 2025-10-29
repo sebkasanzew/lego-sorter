@@ -17,7 +17,7 @@
    - Open Blender
    - Go to 3D View sidebar (press `N`)
    - Find "BlenderMCP" tab
-   - Click "Connect to Claude"
+   - Click "Connect to MCP server"
 
 2. **Configure VSCode MCP:**
 
