@@ -407,9 +407,11 @@ def setup_conveyor_animation(conveyor: Optional[Any]) -> None:
     # Set linear interpolation for smooth movement
     anim_data = getattr(mat.node_tree, "animation_data", None)
     if anim_data and getattr(anim_data, "action", None):
-        for fcurve in anim_data.action.fcurves:
-            for keyframe in fcurve.keyframe_points:
-                keyframe.interpolation = "LINEAR"
+        action = anim_data.action
+        if hasattr(action, "fcurves"):
+            for fcurve in action.fcurves:
+                for keyframe in fcurve.keyframe_points:
+                    keyframe.interpolation = "LINEAR"
 
     print("✓ Setup conveyor belt material animation (visual)")
 
@@ -576,10 +578,12 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
         # Make fcurves linear and cyclic
         anim = getattr(slat, "animation_data", None)
         if anim and getattr(anim, "action", None):
-            for fcurve in anim.action.fcurves:
-                for kpt in fcurve.keyframe_points:
-                    kpt.interpolation = "LINEAR"
-                fcurve.modifiers.new(type="CYCLES")
+            action = anim.action
+            if hasattr(action, "fcurves"):
+                for fcurve in action.fcurves:
+                    for kpt in fcurve.keyframe_points:
+                        kpt.interpolation = "LINEAR"
+                    fcurve.modifiers.new(type="CYCLES")
 
         # Add to conveyor collection
         if conveyor_collection and all(

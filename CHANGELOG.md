@@ -13,11 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Color detection logic for part classification
 
 ### Added
+- **Conveyor Belt Transport System** (2025-10-29):
+  - `blender/place_parts_on_conveyor.py` - Positions LEGO parts on conveyor surface in grid layout
+  - `blender/enhance_conveyor_physics.py` - Optimizes friction (slats: 2.5, parts: 1.5) and solver (20 iterations)
+  - `tests/test_conveyor_transport.py` - Automated validation of part transport functionality
+  - `docs/CONVEYOR_TRANSPORT_FIX.md` - Comprehensive documentation of transport improvements
+  - `docs/CONVEYOR_FIX_QUICK_REF.md` - Quick reference for conveyor belt testing
+  - 5 new cells in `quick_experiments.ipynb` for conveyor belt transport testing
+  
 - **Documentation Optimization for AI Agents** (2025-10-07):
   - `QUICK_REFERENCE.md` - Concise 10-task quick reference (150 lines)
   - Cross-references between all documentation files for better navigation
   - Executive summary in `docs/ARCHITECTURE.md` for quick scanning
   - Expanded Pylance/VSCode setup in `docs/TYPE_IGNORE_GUIDE.md`
+
+### Fixed
+- **Conveyor Belt Transport** (2025-10-29):
+  - LEGO parts now properly positioned on conveyor belt surface (was: spawned in bucket at origin)
+  - Increased friction coefficients for reliable grip (slats: 1.5→2.5, parts: 0.9→1.5)
+  - Optimized rigid body solver iterations (10→20) for accurate friction simulation
+  - Reduced collision margins to 0.0 for tight contact between parts and slats
+  - Parts now transport upward along inclined belt as designed
 
 ### Changed
 - **Streamlined AGENTS.md** from 304 to ~180 lines (40% reduction):
