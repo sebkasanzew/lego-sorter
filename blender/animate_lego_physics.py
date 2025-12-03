@@ -16,9 +16,6 @@ import bpy
 from typing import Optional, List, Any, cast
 from mathutils import Vector
 
-# MCP-only: avoid UI-dependent baking operators
-BAKE_TO_KEYFRAMES: bool = False
-
 
 def ensure_material(
     name: str,
@@ -255,8 +252,10 @@ def setup_lego_part_physics(obj: Any) -> None:
             "No rigid body present (operator may have failed); nothing to configure"
         )
 
-    # Collision shape: prefer MESH; if it's not supported this will raise at runtime
-    rb.collision_shape = "MESH"
+    # Collision shape: BOX is fastest, CONVEX_HULL is good balance, MESH is most accurate
+    rb.collision_shape = (
+        "CONVEX_HULL"  # "BOX" Fast for development; change to CONVEX_HULL for accuracy
+    )
 
     # Set realistic LEGO properties
     rb.mass = 0.002
@@ -270,7 +269,7 @@ def setup_lego_part_physics(obj: Any) -> None:
     # Enable the object for physics simulation
     rb.enabled = True
 
-    # Reduce collision margin for small parts to avoid floating above surfaces
+    # Add collision margin to prevent tunneling at low quality settings
     rb.use_margin = True
     rb.collision_margin = 0.0
 
@@ -473,7 +472,12 @@ def manual_per_frame_sampling(start: int, end: int) -> None:
 
 
 def start_physics_simulation() -> None:
-    """Start the physics simulation"""
+    """Configure physics simulation for real-time playback.
+
+    Note: We don't bake physics here as ptcache.bake_all() blocks indefinitely
+    in MCP/headless mode. Instead, physics runs in real-time when you play
+    the animation in Blender (press Space).
+    """
     scene = bpy.context.scene
 
     # Set frame range for simulation
@@ -488,6 +492,15 @@ def start_physics_simulation() -> None:
     if not scene.rigidbody_world:
         _ensure_rigidbody_world(scene)
 
+    # Configure rigid body world cache
+    rbw = scene.rigidbody_world
+    if rbw:
+        rbw.point_cache.frame_start = 1
+        rbw.point_cache.frame_end = 100
+        # Simulation quality (lower = faster, higher = more accurate)
+        rbw.substeps_per_frame = 5
+        rbw.solver_iterations = 10
+
     # Update the scene to ensure physics is ready
     view_layer = bpy.context.view_layer
 
@@ -498,22 +511,14 @@ def start_physics_simulation() -> None:
 
     view_layer.update()
 
-    if BAKE_TO_KEYFRAMES:
-        # Kept for completeness, but disabled in MCP runs
-        try:
-            print(f"🔁 Baking rigid-body simulation to keyframes (1..100)...")
-            bpy.ops.rigidbody.bake_to_keyframes(frame_start=1, frame_end=100)
-            print(
-                "✅ Rigid-body baked to keyframes (bpy.ops.rigidbody.bake_to_keyframes)"
-            )
-        except Exception as err:
-            print(
-                f"⚠️  Bake to keyframes unavailable or failed ({err!s}); using manual per-frame sampling instead"
-            )
-            manual_per_frame_sampling(start=1, end=100)
-    else:
-        print("ℹ️  Skipping bake (MCP mode); using manual per-frame sampling…")
-        manual_per_frame_sampling(start=1, end=100)
+    # Clear any existing cache so physics starts fresh
+    try:
+        bpy.ops.ptcache.free_bake_all()
+    except Exception:
+        pass  # Ignore if no cache exists
+
+    print("✅ Physics simulation configured (real-time mode)")
+    print("   Press SPACE in Blender to play animation and see physics")
 
 
 def setup_collision_collections() -> None:
@@ -578,13 +583,13 @@ def main() -> None:
     except Exception:
         print("\u26a0\ufe0f Failed to assign per-part colors (continuing)")
 
-        # Position parts above the bucket so they can fall
-        position_parts_above_bucket(lego_parts)
+    # Position parts above the bucket so they can fall
+    position_parts_above_bucket(lego_parts)
 
-        # Clear any animation data on parts to avoid pre-existing keyframes freezing transforms
-        for p in lego_parts:
-            if p.animation_data:
-                p.animation_data_clear()
+    # Clear any animation data on parts to avoid pre-existing keyframes freezing transforms
+    for p in lego_parts:
+        if p.animation_data:
+            p.animation_data_clear()
 
     # Add randomization to prevent perfect stacking
     randomize_starting_positions(lego_parts)

@@ -596,13 +596,13 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
         if rb is None:
             raise Exception("Rigid body not assigned")
 
-        rb.collision_shape = "MESH"
+        rb.collision_shape = "MESH"  # BOX is more reliable than MESH for thin objects
         rb.friction = 1.5
         rb.restitution = 0.0
         rb.use_deactivation = False
         rb.kinematic = True
         rb.use_margin = True
-        rb.collision_margin = 0.0
+        rb.collision_margin = 0.005  # 5mm margin prevents tunneling at low quality
 
         # DIRECT KEYFRAME APPROACH: No constraint, just manually keyframe positions
         # This avoids Blender 5.0 Follow Path constraint bugs in background mode
