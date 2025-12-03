@@ -431,27 +431,39 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
     width = conveyor.dimensions.y
 
     margin_end = 0.06
+    # Surface offset for top and bottom of the belt loop
     surface_offset = thickness * 0.5 + 0.004
 
-    # compute start/end in world space using local coordinates and matrix_world
-    mw = conveyor.matrix_world
-    start_local = Vector((-length * 0.5 + margin_end, 0.0, surface_offset))
-    end_local = Vector((length * 0.5 - margin_end, 0.0, surface_offset))
-    start_pt = mw @ start_local
-    end_pt = mw @ end_local
+    # Define 4 points for the loop: Top-Start -> Top-End -> Bottom-End -> Bottom-Start
+    p0_local = Vector((-length * 0.5 + margin_end, 0.0, surface_offset))
+    p1_local = Vector((length * 0.5 - margin_end, 0.0, surface_offset))
+    p2_local = Vector((length * 0.5 - margin_end, 0.0, -surface_offset))
+    p3_local = Vector((-length * 0.5 + margin_end, 0.0, -surface_offset))
+
+    p0_co = mw @ p0_local
+    p1_co = mw @ p1_local
+    p2_co = mw @ p2_local
+    p3_co = mw @ p3_local
 
     # Create a curve path between start and end
     curve_data = bpy.data.curves.new("ConveyorPath", type="CURVE")
     curve_data.dimensions = "3D"
+
+    # Use BEZIER with VECTOR handles and explicit handle positions
     spline = curve_data.splines.new("BEZIER")
-    spline.bezier_points.add(1)
-    p0 = spline.bezier_points[0]
-    p1 = spline.bezier_points[1]
-    p0.co = start_pt
-    p1.co = end_pt
-    # Auto handles to keep it straight but allow smoothness
-    p0.handle_left_type = p0.handle_right_type = "AUTO"
-    p1.handle_left_type = p1.handle_right_type = "AUTO"
+    spline.bezier_points.add(3)
+
+    pts = spline.bezier_points
+    pts[0].co = p0_co
+    pts[1].co = p1_co
+    pts[2].co = p2_co
+    pts[3].co = p3_co
+
+    for p in pts:
+        p.handle_left_type = p.handle_right_type = "FREE"
+        # Explicitly set handles to co to ensure zero length (sharp corner)
+        p.handle_left = p.co
+        p.handle_right = p.co
 
     curve_obj = bpy.data.objects.new("Conveyor_Path", curve_data)
     scene = bpy.context.scene
@@ -461,15 +473,23 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
         except Exception:
             pass
 
-    # Mark the curve as a path with evaluation time (for some Blender versions)
+    # Mark the curve as a path
     curve_data.use_path = True
-    curve_data.path_duration = 100  # frames baseline
+    curve_data.path_duration = 500  # Slower belt for safe LEGO transport
+
+    # We do NOT animate eval_time on the curve anymore.
+    # Instead, we animate the offset_factor on the slats directly using Fixed Position.
+    # This avoids the issue with cyclic modifiers on the curve animation in Blender 5.0.
+
     # Make the curve cyclic so the conveyor path is a loop
     if spline:
         try:
             spline.use_cyclic_u = True
         except Exception:
             pass
+
+    # Use the top start point for initial slat placement reference
+    start_pt = p0_co
 
     # Put curve into conveyor collection
     conveyor_collection = bpy.data.collections.get("conveyor_belt")
@@ -482,9 +502,69 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
             except Exception:
                 pass
 
-    # Helper to create a single slat that follows the path
-    def create_slat(name: str, offset_factor: float) -> Optional[Any]:
-        bpy.ops.mesh.primitive_cube_add(size=1, location=start_pt)
+    # Pre-calculate segment lengths for proper offset distribution
+    # The 4-point curve has very different segment lengths (long top/bottom, short ends)
+    spline = curve_data.splines[0]
+    pts = spline.bezier_points
+    n_pts = len(pts)
+
+    # Calculate world-space segment lengths
+    segment_lengths: list[float] = []
+    for i in range(n_pts):
+        p0 = curve_obj.matrix_world @ pts[i].co
+        p1 = curve_obj.matrix_world @ pts[(i + 1) % n_pts].co
+        segment_lengths.append((p1 - p0).length)
+
+    total_length = sum(segment_lengths)
+
+    # Create cumulative length array for offset mapping
+    cumulative_lengths = [0.0]
+    for sl in segment_lengths:
+        cumulative_lengths.append(cumulative_lengths[-1] + sl)
+
+    # Normalize to [0, 1]
+    cumulative_normalized = [cl / total_length for cl in cumulative_lengths]
+
+    print(f"  [Curve] Segment lengths: {[f'{sl:.3f}' for sl in segment_lengths]}")
+    print(
+        f"  [Curve] Total length: {total_length:.3f}, Cumulative: {[f'{cn:.3f}' for cn in cumulative_normalized]}"
+    )
+
+    def sample_curve_position(offset: float) -> Vector:
+        """Sample curve position at offset [0,1] distributed by actual path length."""
+        # Wrap offset to [0, 1)
+        offset = offset % 1.0
+
+        # Find which segment this offset falls into
+        seg_idx = 0
+        for i in range(n_pts):
+            if offset < cumulative_normalized[i + 1]:
+                seg_idx = i
+                break
+        else:
+            seg_idx = n_pts - 1
+
+        # Calculate local t within segment
+        seg_start = cumulative_normalized[seg_idx]
+        seg_end = cumulative_normalized[seg_idx + 1]
+        seg_range = seg_end - seg_start
+
+        if seg_range > 0:
+            seg_t = (offset - seg_start) / seg_range
+        else:
+            seg_t = 0.0
+
+        # Get the two adjacent control points
+        p0 = curve_obj.matrix_world @ pts[seg_idx].co
+        p1 = curve_obj.matrix_world @ pts[(seg_idx + 1) % n_pts].co
+
+        # Linear interpolation
+        return p0.lerp(p1, seg_t)
+
+    # Helper to create a single slat (simplified: no constraint, direct keyframes)
+    def create_slat(name: str, start_offset_factor: float) -> Optional[Any]:
+        # Create at origin
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))
         slat_obj = bpy.context.active_object
         if slat_obj is None or not isinstance(slat_obj, Object):
             return None
@@ -493,9 +573,7 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
 
         # Size and orient the slat for reliable collisions
         slat_length = max(length * 0.06, 0.05)
-        slat.scale = Vector(
-            (slat_length, width * 0.52, max(0.01, thickness * 0.4))
-        )  # give it some thickness
+        slat.scale = Vector((slat_length, width * 0.52, max(0.01, thickness * 0.4)))
         slat.rotation_euler = conveyor.rotation_euler.copy()
         bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 
@@ -514,7 +592,6 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
                 pass
         slat.select_set(True)
         bpy.ops.rigidbody.object_add(type="PASSIVE")
-        # Guard rigid_body access with a local variable so static checkers know it's been narrowed
         rb = slat.rigid_body
         if rb is None:
             raise Exception("Rigid body not assigned")
@@ -524,66 +601,30 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
         rb.restitution = 0.0
         rb.use_deactivation = False
         rb.kinematic = True
-        # Set very small or zero collision margin to avoid floating gaps
         rb.use_margin = True
-        # Force a zero collision margin to avoid solver contact gaps.
-        # Some Blender builds or later operations may reset this, so set it again
-        # after keyframe baking as well.
         rb.collision_margin = 0.0
 
-        # Follow Path constraint and animation
-        # Create the constraint and set attributes defensively (avoid typing.cast)
-        constr = slat.constraints.new("FOLLOW_PATH")
+        # DIRECT KEYFRAME APPROACH: No constraint, just manually keyframe positions
+        # This avoids Blender 5.0 Follow Path constraint bugs in background mode
+        start_frame = 1
+        end_frame = 500  # 500 frames = slow, safe transport speed
 
-        try:
-            # constraint attributes may not be present in stubs; use a weakly-typed shim
-            constr_any = cast(Any, constr)
-            constr_any.target = curve_obj
-            constr_any.use_curve_follow = True
-            constr_any.use_fixed_location = True
-            constr_any.offset_factor = offset_factor
-        except Exception:
-            # Fall back to individual guarded assignments in case some are missing
-            try:
-                cast(Any, constr).target = curve_obj
-            except Exception:
-                pass
-            try:
-                cast(Any, constr).use_curve_follow = True
-            except Exception:
-                pass
-            try:
-                cast(Any, constr).use_fixed_location = True
-            except Exception:
-                pass
-            try:
-                cast(Any, constr).offset_factor = offset_factor
-            except Exception:
-                pass
-        slat.keyframe_insert(
-            data_path=f'constraints["{constr.name}"].offset_factor', frame=1
-        )
-        # Advance by +1.0 so the fcurve can cycle continuously
-        try:
-            cast(Any, constr).offset_factor = offset_factor + 1.0
-        except Exception:
-            try:
-                cast(Any, constr).offset_factor = offset_factor + 1.0
-            except Exception:
-                pass
-        slat.keyframe_insert(
-            data_path=f'constraints["{constr.name}"].offset_factor', frame=100
-        )
+        for f in range(start_frame, end_frame + 1):
+            # Calculate offset at this frame (loops every 500 frames)
+            frame_offset = (start_offset_factor + (f - 1) / 500.0) % 1.0
 
-        # Make fcurves linear and cyclic
-        anim = getattr(slat, "animation_data", None)
-        if anim and getattr(anim, "action", None):
-            action = anim.action
-            if hasattr(action, "fcurves"):
-                for fcurve in action.fcurves:
-                    for kpt in fcurve.keyframe_points:
-                        kpt.interpolation = "LINEAR"
-                    fcurve.modifiers.new(type="CYCLES")
+            # Get position on curve
+            pos = sample_curve_position(frame_offset)
+
+            # Set position and keyframe
+            slat.location = pos
+            slat.keyframe_insert(data_path="location", frame=f)
+
+        # Debug first slat
+        if name == "Conveyor_Slat_01":
+            p1 = sample_curve_position(start_offset_factor)
+            p250 = sample_curve_position((start_offset_factor + 249 / 500) % 1.0)
+            print(f"  [Slat01] Frame 1: pos={p1}, Frame 250: pos={p250}")
 
         # Add to conveyor collection
         if conveyor_collection and all(
@@ -599,133 +640,16 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
 
         return slat
 
-    # Create multiple slats evenly spaced along the path
-    num_slats = 20
+    # Calculate number of slats needed to cover the path with no gaps
+    slat_length = max(length * 0.06, 0.05)
+    num_slats = max(10, int(total_length / slat_length))
+    print(
+        f"  [Slats] Length: {slat_length:.3f}, Count: {num_slats} (path: {total_length:.3f})"
+    )
+
     for i in range(num_slats):
         offset = (i / num_slats) % 1.0
         create_slat(f"Conveyor_Slat_{i + 1:02d}", offset)
-
-    # Bake slat FOLLOW_PATH motion to keyframes so physics sees animated transforms
-    try:
-        start_frame = 1
-        end_frame = 100
-        # Iterate over objects whose names match the slat pattern and ensure runtime type
-        for slat in [
-            o for o in list(bpy.data.objects) if o.name.startswith("Conveyor_Slat_")
-        ]:
-            if not isinstance(slat, Object):
-                continue
-            # evaluate curve-driven constraint at each frame and keyframe location/rotation
-            constr = next(
-                (c for c in slat.constraints if c.type == "FOLLOW_PATH"), None
-            )
-            if not constr:
-                continue
-            for f in range(start_frame, end_frame + 1):
-                scene = bpy.context.scene
-                if scene is not None:
-                    try:
-                        scene.frame_set(1)
-                    except Exception:
-                        pass
-                # Evaluate dependency graph to update constraint-driven transform
-                view_layer = bpy.context.view_layer
-                if view_layer is not None:
-                    try:
-                        view_layer.update()
-                    except Exception:
-                        pass
-                # Keyframe object transform
-                slat.keyframe_insert(data_path="location", frame=f)
-                slat.keyframe_insert(data_path="rotation_euler", frame=f)
-            # After baking, remove the follow-path constraint so the solver uses animated transforms
-            slat.constraints.remove(constr)
-        # restore frame to 1
-        scene = bpy.context.scene
-        if scene is not None:
-            try:
-                scene.frame_set(start_frame)
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    # Bake slat Follow Path constraint motion into object keyframes so the
-    # rigid-body solver receives explicit animated transforms. Baking from
-    # frame 1..100 matches the constraint keyframes created above. After
-    # baking we remove the Follow Path constraint to avoid double animation.
-    try:
-        start_frame = 1
-        end_frame = 100
-        # Collect slats created
-        slat_objs = [
-            o
-            for o in bpy.data.objects
-            if o.name.startswith("Conveyor_Slat_") and isinstance(o, Object)
-        ]
-        if slat_objs:
-            # Ensure scene has correct frame range
-            scene = bpy.context.scene
-            if scene is not None:
-                try:
-                    scene.frame_start = start_frame
-                    scene.frame_end = end_frame
-                except Exception:
-                    pass
-            # Bake each slat's visual transform (location/rotation) from constraint
-            for slat in slat_objs:
-                view_layer = bpy.context.view_layer
-                if (
-                    view_layer is not None
-                    and getattr(view_layer, "objects", None) is not None
-                ):
-                    try:
-                        view_layer.objects.active = slat
-                    except Exception:
-                        pass
-                slat.select_set(True)
-                try:
-                    bpy.ops.nla.bake(
-                        frame_start=start_frame,
-                        frame_end=end_frame,
-                        only_selected=True,
-                        visual_keying=True,
-                        clear_constraints=True,
-                        use_current_action=False,
-                        step=1,
-                    )
-                except Exception:
-                    # Fallback: keyframe sample transforms per frame
-                    for f in range(start_frame, end_frame + 1):
-                        scene = bpy.context.scene
-                        if scene is not None:
-                            try:
-                                scene.frame_set(f)
-                            except Exception:
-                                pass
-                        slat.keyframe_insert(data_path="location", frame=f)
-                        slat.keyframe_insert(data_path="rotation_euler", frame=f)
-                slat.select_set(False)
-                # Re-apply collision margin after baking in case it was reset
-                try:
-                    rb = slat.rigid_body
-                    if rb is not None:
-                        try:
-                            rb.use_margin = True
-                            rb.collision_margin = 0.0
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    # Ensure the scene has a rigid body world (for preview when running this step alone)
-    if not getattr(scene, "rigidbody_world", None):
-        try:
-            bpy.ops.rigidbody.world_add()
-        except Exception:
-            pass
 
     print("✓ Created path-driven animated slats for friction transport")
 
