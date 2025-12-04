@@ -488,9 +488,6 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
         except Exception:
             pass
 
-    # Use the top start point for initial slat placement reference
-    start_pt = p0_co
-
     # Put curve into conveyor collection
     conveyor_collection = bpy.data.collections.get("conveyor_belt")
     if conveyor_collection:
@@ -596,7 +593,7 @@ def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
         if rb is None:
             raise Exception("Rigid body not assigned")
 
-        rb.collision_shape = "MESH"  # BOX is more reliable than MESH for thin objects
+        rb.collision_shape = "CONVEX_HULL"
         rb.friction = 1.5
         rb.restitution = 0.0
         rb.use_deactivation = False
