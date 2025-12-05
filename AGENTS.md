@@ -126,6 +126,37 @@ CLI:
 pytest tests/
 ```
 
+## Visual Verification (MANDATORY)
+
+**ALWAYS verify geometry changes using at least 2 camera angles.**
+
+### Verification Cameras
+Run `blender/setup_verification_cameras.py` to create standard cameras:
+- `Camera_Side` - Verify slat angles, conveyor incline
+- `Camera_Overview` - Overall geometry check  
+- `Camera_Top` - Layout from above
+- `Camera_Bucket_Detail` - Bucket floor attachment
+
+### Verification Workflow
+```python
+# 1. Setup cameras (once per session)
+exec(open('blender/setup_verification_cameras.py').read())
+
+# 2. Switch to camera view
+set_viewport_to_camera('Camera_Side')
+
+# 3. Take screenshot via MCP
+# mcp_blender_get_viewport_screenshot
+
+# 4. Switch to second camera
+set_viewport_to_camera('Camera_Overview')
+
+# 5. Take second screenshot
+# mcp_blender_get_viewport_screenshot
+```
+
+**Rule**: After ANY geometry modification, verify with minimum 2 camera views before reporting completion.
+
 ## Documentation Map
 
 | Need | Document |

@@ -309,14 +309,16 @@ def import_lego_parts():
             center_z = (min_z + max_z) / 2
 
             # Add randomization to distribute parts inside bucket
+            # Parts should spawn over the belt area (Y within ±0.035)
+            # to ensure they land on the slats, not the guide ramps
             import random
 
             x_offset = random.uniform(
-                -0.08, 0.08
-            )  # Random x position within bucket  # noqa: S311
+                -0.05, 0.05
+            )  # Random x position within bucket center  # noqa: S311
             y_offset = random.uniform(
-                -0.08, 0.08
-            )  # Random y position within bucket  # noqa: S311
+                -0.035, 0.035
+            )  # Random y position over belt slats  # noqa: S311
 
             for obj in imported_objects:
                 obj.location.x = x_offset

@@ -178,10 +178,10 @@ def setup_physics_world() -> None:
     rbw = scene.rigidbody_world
     if rbw is not None:
         rbw.time_scale = 1.0
-        rbw.substeps_per_frame = 60
-        rbw.solver_iterations = 120
+        rbw.substeps_per_frame = 80  # High for small objects
+        rbw.solver_iterations = 80  # High for accurate collision
 
-    print("✅ Physics world configured with realistic gravity")
+    print("✅ Physics world configured with high precision settings")
 
 
 def setup_bucket_physics() -> Optional[Any]:
@@ -259,19 +259,19 @@ def setup_lego_part_physics(obj: Any) -> None:
 
     # Set realistic LEGO properties
     rb.mass = 0.002
-    rb.friction = 0.9
-    rb.restitution = 0.4
+    rb.friction = 2.0  # High friction to stay on conveyor slats
+    rb.restitution = 0.3  # Less bouncy
 
     # Set damping to prevent eternal bouncing
-    rb.linear_damping = 0.1
-    rb.angular_damping = 0.1
+    rb.linear_damping = 0.2  # More damping
+    rb.angular_damping = 0.2
 
     # Enable the object for physics simulation
     rb.enabled = True
 
     # Add collision margin to prevent tunneling at low quality settings
     rb.use_margin = True
-    rb.collision_margin = 0.0
+    rb.collision_margin = 0.002  # 2mm margin
 
     print(f"✅ Physics setup for LEGO part: {obj.name}")
 

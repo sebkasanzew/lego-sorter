@@ -1,18 +1,67 @@
+#!/usr/bin/env python3
+"""
+Blender script to create a conveyor belt with animated slats.
+
+The conveyor belt is designed to:
+- Start INSIDE the bucket so LEGO parts fall onto the slats
+- Transport parts along an inclined surface using moving slats
+- Slats follow a looping path (top surface -> end -> bottom -> start)
+
+Architecture:
+- BEZIER curve path defines the conveyor loop
+- Direct keyframe animation for each slat (500 frames per cycle)
+- Kinematic rigid bodies for physics interaction with LEGO parts
+- Arc-length parameterization ensures uniform slat speed
+"""
+
 import bpy
+import math
+from typing import Optional, Any, Tuple, List, cast
 from mathutils import Vector
-from typing import Optional, Any, cast
-from bpy.types import Object
+
+
+# ============================================================================
+# Configuration Constants
+# ============================================================================
+
+# Conveyor geometry (meters)
+# Belt starts well inside bucket to catch falling parts
+CONVEYOR_START_X = -0.10  # Start inside bucket area (moved from 0.08)
+CONVEYOR_START_Z = 0.02  # At internal ramp height
+CONVEYOR_END_X = 0.45  # End past bucket wall
+CONVEYOR_RISE = 0.12  # Z rise over length (incline)
+SLAT_GAP = 0.03  # Gap between top and bottom belt surfaces
+
+# Slat dimensions - sized to overlap each other with no gaps
+SLAT_WIDTH = 0.08  # 8cm wide (Y direction) - spans ramp width
+SLAT_THICKNESS = 0.10  # 10cm thick (X direction) - overlap ensures no gaps
+SLAT_HEIGHT = 0.02  # 2cm tall (Z direction) - catches/pushes bricks
+
+# Animation
+SLAT_COUNT = 12  # Number of slats around the loop
+ANIMATION_FRAMES = 500  # Frames for one complete loop
+
+# Legacy constants (for compatibility)
+CONVEYOR_WIDTH = SLAT_WIDTH
+CONVEYOR_LENGTH = CONVEYOR_END_X - CONVEYOR_START_X
+CONVEYOR_THICKNESS = SLAT_HEIGHT
+CONVEYOR_INCLINE = math.degrees(math.atan2(CONVEYOR_RISE, CONVEYOR_LENGTH))
+
+# Bucket dimensions (must match create_sorting_bucket.py)
+BUCKET_BOTTOM_RADIUS = 0.06
+BUCKET_WALL_THICKNESS = 0.008
+EXIT_Z_OFFSET = 0.02
+EXIT_HEIGHT = 0.05
 
 
 def ensure_material(
     name: str,
-    rgba: tuple[float, float, float, float],
-    roughness: float = 0.6,
-    metallic: float = 0.05,
+    rgba: Tuple[float, float, float, float],
+    roughness: float = 0.5,
+    metallic: float = 0.0,
 ) -> Any:
-    """Create or fetch a simple Principled BSDF material with given color."""
+    """Create or get a simple material."""
     mat = bpy.data.materials.get(name)
-
     if not mat:
         mat = bpy.data.materials.new(name=name)
         mat.use_nodes = True
@@ -20,716 +69,543 @@ def ensure_material(
         if node_tree is None:
             return mat
         nodes = node_tree.nodes
-        links = node_tree.links
         nodes.clear()
         bsdf = nodes.new(type="ShaderNodeBsdfPrincipled")
-        out = nodes.new(type="ShaderNodeOutputMaterial")
+        output = nodes.new(type="ShaderNodeOutputMaterial")
         bsdf.location = (-200, 0)
-        out.location = (0, 0)
-        links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+        output.location = (0, 0)
+        node_tree.links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
 
-    # Update color/props
     node_tree = mat.node_tree
     if node_tree is None:
         return mat
-
     bsdf = node_tree.nodes.get("Principled BSDF")
     if bsdf:
-        # Node sockets may not have statically-known attributes in stubs; cast to Any
         base = bsdf.inputs.get("Base Color")
-        if base is not None:
-            base_socket = cast(Any, base)
-            base_socket.default_value = rgba
-
+        if base:
+            cast(Any, base).default_value = rgba
         rough = bsdf.inputs.get("Roughness")
-        if rough is not None:
-            rough_socket = cast(Any, rough)
-            rough_socket.default_value = roughness
-
+        if rough:
+            cast(Any, rough).default_value = roughness
         met = bsdf.inputs.get("Metallic")
-        if met is not None:
-            met_socket = cast(Any, met)
-            met_socket.default_value = metallic
+        if met:
+            cast(Any, met).default_value = metallic
 
     return mat
 
 
 def assign_material(obj: Any, mat: Any) -> None:
-    """Assign material to object as slot 0 (replace or append)."""
-    if not obj or getattr(obj, "data", None) is None:
+    """Assign material to object."""
+    if not obj or not hasattr(obj, "data") or obj.data is None:
         return
-    mats = obj.data.materials
-
-    if mats and len(mats) > 0:
-        mats[0] = mat
+    if obj.data.materials:
+        obj.data.materials[0] = mat
     else:
-        mats.append(mat)
+        obj.data.materials.append(mat)
 
 
-def clear_existing_conveyor() -> None:
-    """Remove any existing conveyor belt objects and collection."""
-    # Remove conveyor collection if it exists
+def set_active(obj: Any) -> None:
+    """Set object as active in view layer."""
+    view_layer = bpy.context.view_layer
+    if view_layer and hasattr(view_layer, "objects"):
+        try:
+            view_layer.objects.active = obj
+        except Exception:
+            pass
+
+
+def ensure_collection(name: str) -> Any:
+    """Get or create a collection by name."""
+    collection = bpy.data.collections.get(name)
+    if collection is None:
+        collection = bpy.data.collections.new(name)
+        scene = bpy.context.scene
+        if scene and scene.collection:
+            scene.collection.children.link(collection)
+    return collection
+
+
+def clear_conveyor_objects() -> None:
+    """Remove ALL existing conveyor-related objects."""
     conveyor_collection = bpy.data.collections.get("conveyor_belt")
     if conveyor_collection:
-        for obj in conveyor_collection.objects:
+        for obj in list(conveyor_collection.objects):
             bpy.data.objects.remove(obj, do_unlink=True)
+        try:
+            scene = bpy.context.scene
+            if scene and scene.collection:
+                scene.collection.children.unlink(conveyor_collection)
+        except Exception:
+            pass
         bpy.data.collections.remove(conveyor_collection)
 
-    print("✓ Cleared existing conveyor belt objects")
-
-
-def create_conveyor_belt() -> Optional[Object]:
-    """Create a conveyor belt mesh positioned to transport LEGO parts from bucket up to sorting section."""
-    # Create conveyor belt mesh - starts at bucket hole, goes up at slight angle
-    # Position the conveyor to start at the bucket hole location (0.12, 0, 0.12)
-    bpy.ops.mesh.primitive_cube_add(
-        size=1,
-        location=(0.6, 0, 0.18),  # Start near bucket hole, positioned higher
-    )
-
-    obj = bpy.context.active_object
-    if obj is None or not isinstance(obj, Object):
-        print("❌ Failed to create conveyor belt")
-        return None
-    conveyor: Object = obj
-
-    conveyor.name = "Conveyor_Belt"
-
-    # Scale to create belt proportions (long, narrow, thin)
-    conveyor.scale = Vector((1.2, 0.25, 0.02))  # Long, narrow, thin belt body
-    # Pitch the belt upward slightly (rotate around Y). Use negative pitch so the
-    # belt rises away from the bucket (transport direction positive X).
-    conveyor.rotation_euler = (0, -0.18, 0)  # ~-10 degrees incline
-
-    # Apply scale but keep rotation as object-space rotation (do not bake rotation
-    # into mesh yet; we'll keep rotation so computed axes are correct)
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    # Assign dark belt material
-    belt_mat = ensure_material(
-        "Conveyor_Belt_Mat", (0.12, 0.12, 0.12, 1.0), roughness=0.75, metallic=0.05
-    )
-    assign_material(conveyor, belt_mat)
-
-    # Reposition conveyor so its near-end aligns with the Sorting_Bucket exit.
-    # Compute desired X so the conveyor start (left end) sits at the bucket hole.
-    bucket = bpy.data.objects.get("Sorting_Bucket")
-    margin_end = 0.06
-    try:
-        length = conveyor.dimensions.x
-        if bucket:
-            # place conveyor so start_pt.x == bucket.location.x
-            conveyor.location.x = bucket.location.x + (length * 0.5 - margin_end)
-            # lift slightly to match bucket outlet height
-            conveyor.location.z = bucket.location.z + 0.02
-    except Exception:
-        pass
-
-    print("✓ Created conveyor belt base mesh")
-    return conveyor
-
-
-def add_conveyor_details(conveyor: Optional[Any]) -> None:
-    """Add visual details to make the conveyor look more realistic."""
-    if not conveyor:
-        return
-
-    # Simple subdivide using operators instead of bmesh
-    view_layer = bpy.context.view_layer
-    if view_layer is not None and getattr(view_layer, "objects", None) is not None:
-        try:
-            view_layer.objects.active = conveyor
-        except Exception:
-            pass
-    bpy.ops.object.mode_set(mode="EDIT")
-
-    # Select all and subdivide
-    bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.mesh.subdivide(number_cuts=8)
-
-    # Return to object mode
-    bpy.ops.object.mode_set(mode="OBJECT")
-
-    print("✓ Added conveyor belt details")
-
-
-def create_conveyor_supports(conveyor: Optional[Any]) -> None:
-    """No-op: supports removed to focus on belt and slats."""
-    return
-
-
-def create_bucket_hole() -> None:
-    """Create a hole in the bucket's side wall for parts to flow out onto conveyor."""
-    # Get the sorting bucket
-    bucket = bpy.data.objects.get("Sorting_Bucket")
-    if not bucket:
-        print("❌ Sorting bucket not found")
-        return
-
-    # Create a cylinder to cut the hole
-    bpy.ops.mesh.primitive_cylinder_add(
-        radius=0.05,  # Slightly larger hole radius
-        depth=0.2,  # Depth to ensure it cuts through wall
-        location=(0.12, 0, 0.16),  # Position on bucket side, slightly higher
-    )
-
-    hole_cutter = bpy.context.active_object
-    if not hole_cutter:
-        print("❌ Failed to create hole cutter")
-        return
-
-    hole_cutter.name = "Bucket_Hole_Cutter"
-    hole_cutter.rotation_euler = (0, 1.5708, 0)
-
-    # Apply rotation
-    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-
-    # Select bucket and hole cutter for boolean operation
-    view_layer = bpy.context.view_layer
-    if view_layer is not None and getattr(view_layer, "objects", None) is not None:
-        try:
-            view_layer.objects.active = bucket
-        except Exception:
-            pass
-    bucket.select_set(True)
-    hole_cutter.select_set(True)
-
-    # Add boolean modifier to bucket
-    boolean_mod = bucket.modifiers.new(name="Bucket_Hole", type="BOOLEAN")
-    # Modifier attributes are dynamic across Blender versions; use a weakly-typed shim
-    from typing import Any as _Any
-
-    _mod_any: _Any = boolean_mod
-    try:
-        _mod_any.operation = "DIFFERENCE"
-    except Exception:
-        pass
-    try:
-        _mod_any.object = hole_cutter
-    except Exception:
-        pass
-
-    # Apply the modifier
-    view_layer = bpy.context.view_layer
-    if view_layer is not None and getattr(view_layer, "objects", None) is not None:
-        try:
-            view_layer.objects.active = bucket
-        except Exception:
-            pass
-    bpy.ops.object.modifier_apply(modifier="Bucket_Hole")
-
-    # Remove the hole cutter object
-    bpy.data.objects.remove(hole_cutter, do_unlink=True)
-
-    print("✓ Created hole in bucket side wall")
-
-
-def setup_cloth_conveyor_physics(conveyor: Optional[Any]) -> None:
-    """Setup cloth simulation for realistic friction-based conveyor belt movement."""
-    if not conveyor:
-        return
-
-    # Select the conveyor
-    view_layer = bpy.context.view_layer
-    if view_layer is not None and getattr(view_layer, "objects", None) is not None:
-        try:
-            view_layer.objects.active = conveyor
-        except Exception:
-            pass
-    conveyor.select_set(True)
-
-    # Enter edit mode to add more geometry for cloth simulation
-    bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.mesh.subdivide(number_cuts=12)
-    bpy.ops.object.mode_set(mode="OBJECT")
-
-    # Add cloth physics modifier
-    cloth_mod = conveyor.modifiers.new(name="Cloth", type="CLOTH")
-    cloth_settings = cloth_mod.settings
-
-    # Configure cloth settings for conveyor belt behavior
-    cloth_settings.quality = 8
-    cloth_settings.mass = 0.3
-    cloth_settings.tension_stiffness = 80
-    cloth_settings.compression_stiffness = 80
-    cloth_settings.shear_stiffness = 80
-    cloth_settings.bending_stiffness = 20
-    cloth_settings.tension_damping = 25
-    cloth_settings.compression_damping = 25
-    cloth_settings.shear_damping = 25
-    cloth_settings.air_damping = 1
-
-    # Set collision settings for interaction with LEGO parts
-    collision_settings = cloth_mod.collision_settings
-    collision_settings.use_collision = True
-    collision_settings.collision_quality = 4
-    collision_settings.distance_min = 0.001
-    collision_settings.friction = 15  # High friction to grip LEGO parts
-
-    # Pin edges to simulate belt being held by rollers
-    bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="DESELECT")
-
-    # Select edge vertices to pin (belt attachment points)
-    bpy.ops.mesh.select_mode(type="VERT")
-
-    # Pin the edges where the belt would be attached to rollers
-    vertex_group = conveyor.vertex_groups.new(name="Pinned")
-
-    # Return to object mode
-    bpy.ops.object.mode_set(mode="OBJECT")
-
-    # Pin group assignment (edges of the belt)
-    cloth_settings.vertex_group_mass = vertex_group.name
-
-    print("✓ Setup cloth-based conveyor physics with high friction")
-
-
-def setup_conveyor_physics(conveyor: Optional[Any]) -> None:
-    """Setup physics properties for the conveyor belt as a passive rigid body surface with friction."""
-    if not conveyor:
-        return
-
-    view_layer = bpy.context.view_layer
-    if view_layer is not None and getattr(view_layer, "objects", None) is not None:
-        try:
-            view_layer.objects.active = conveyor
-        except Exception:
-            pass
-    conveyor.select_set(True)
-
-    # Add passive rigid body so LEGO parts (active) interact with the belt body
-    bpy.ops.rigidbody.object_add(type="PASSIVE")
-    conveyor.rigid_body.collision_shape = "MESH"
-    conveyor.rigid_body.friction = 1.2
-    conveyor.rigid_body.restitution = 0.05
-    conveyor.rigid_body.use_deactivation = True
-
-    # Ensure the passive collider does not move but provides base support
-    conveyor.rigid_body.kinematic = False
-
-    print("✓ Setup conveyor belt passive rigid body for part transport")
-
-
-def create_conveyor_collection() -> Optional[Any]:
-    """Create a collection for conveyor belt objects."""
-    # Create conveyor collection
-    conveyor_collection = bpy.data.collections.new("conveyor_belt")
-    scene = bpy.context.scene
-    if scene and getattr(scene, "collection", None) is not None:
-        try:
-            scene.collection.children.link(conveyor_collection)
-        except Exception:
-            pass
-
-    print("✓ Created conveyor belt collection")
-    return conveyor_collection
-
-
-def create_conveyor_rollers(conveyor: Optional[Any]) -> None:
-    """No-op: rollers removed to focus on belt and slats."""
-    return
-
-
-def setup_conveyor_animation(conveyor: Optional[Any]) -> None:
-    """Setup simple material animation for visual belt motion (optional)."""
-    if not conveyor:
-        return
-
-    # Reuse the assigned belt material; if missing, create one
-    mat = None
-    if conveyor.data and len(conveyor.data.materials) > 0:
-        mat = conveyor.data.materials[0]
-    if not mat:
-        mat = ensure_material(
-            "Conveyor_Belt_Mat", (0.12, 0.12, 0.12, 1.0), roughness=0.75, metallic=0.05
-        )
-        assign_material(conveyor, mat)
-
-    # Get material nodes
-    nodes = mat.node_tree.nodes
-    nodes.clear()
-
-    # Create nodes for animated texture
-    tex_coord = nodes.new(type="ShaderNodeTexCoord")
-    mapping = nodes.new(type="ShaderNodeMapping")
-    noise_tex = nodes.new(type="ShaderNodeTexNoise")
-    principled = nodes.new(type="ShaderNodeBsdfPrincipled")
-    output = nodes.new(type="ShaderNodeOutputMaterial")
-
-    # Set up node positions
-    tex_coord.location = (-800, 0)
-    mapping.location = (-600, 0)
-    noise_tex.location = (-400, 0)
-    principled.location = (-200, 0)
-    output.location = (0, 0)
-
-    # Connect nodes
-    links = mat.node_tree.links
-    links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
-    links.new(mapping.outputs["Vector"], noise_tex.inputs["Vector"])
-    links.new(noise_tex.outputs["Color"], principled.inputs["Base Color"])
-    links.new(principled.outputs["BSDF"], output.inputs["Surface"])
-
-    # Set material properties for conveyor belt look
-    principled.inputs["Base Color"].default_value = (
-        0.12,
-        0.12,
-        0.12,
-        1.0,
-    )  # Belt dark gray
-    principled.inputs["Roughness"].default_value = 0.8
-    principled.inputs["Metallic"].default_value = 0.1
-
-    # Set noise texture properties
-    noise_tex.inputs["Scale"].default_value = 20.0
-    noise_tex.inputs["Roughness"].default_value = 0.5
-
-    # Animate the texture mapping to simulate belt movement
-    scene = bpy.context.scene
-    if scene is not None:
-        try:
-            scene.frame_set(1)
-        except Exception:
-            pass
-    mapping.inputs["Location"].default_value[0] = 0
-    mapping.inputs["Location"].keyframe_insert(data_path="default_value", index=0)
-
-    scene = bpy.context.scene
-    if scene is not None:
-        try:
-            scene.frame_set(100)  # End frame
-        except Exception:
-            pass
-    mapping.inputs["Location"].default_value[0] = 2  # Move texture within 100 frames
-    mapping.inputs["Location"].keyframe_insert(data_path="default_value", index=0)
-
-    # Set linear interpolation for smooth movement
-    anim_data = getattr(mat.node_tree, "animation_data", None)
-    if anim_data and getattr(anim_data, "action", None):
-        action = anim_data.action
-        if hasattr(action, "fcurves"):
-            for fcurve in action.fcurves:
-                for keyframe in fcurve.keyframe_points:
-                    keyframe.interpolation = "LINEAR"
-
-    print("✓ Setup conveyor belt material animation (visual)")
-
-
-def setup_friction_based_conveyor(conveyor: Optional[Any]) -> None:
-    """Create a path-driven belt made of animated slats that carry rigid bodies via friction."""
-    if not conveyor:
-        return
-
-    scene = bpy.context.scene
-
-    # Compute belt endpoints in world space
-    mw = conveyor.matrix_world
-
-    length = conveyor.dimensions.x
-    thickness = conveyor.dimensions.z
-    width = conveyor.dimensions.y
-
-    margin_end = 0.06
-    # Surface offset for top and bottom of the belt loop
-    surface_offset = thickness * 0.5 + 0.004
-
-    # Define 4 points for the loop: Top-Start -> Top-End -> Bottom-End -> Bottom-Start
-    p0_local = Vector((-length * 0.5 + margin_end, 0.0, surface_offset))
-    p1_local = Vector((length * 0.5 - margin_end, 0.0, surface_offset))
-    p2_local = Vector((length * 0.5 - margin_end, 0.0, -surface_offset))
-    p3_local = Vector((-length * 0.5 + margin_end, 0.0, -surface_offset))
-
-    p0_co = mw @ p0_local
-    p1_co = mw @ p1_local
-    p2_co = mw @ p2_local
-    p3_co = mw @ p3_local
-
-    # Create a curve path between start and end
-    curve_data = bpy.data.curves.new("ConveyorPath", type="CURVE")
-    curve_data.dimensions = "3D"
-
-    # Use BEZIER with VECTOR handles and explicit handle positions
-    spline = curve_data.splines.new("BEZIER")
-    spline.bezier_points.add(3)
-
-    pts = spline.bezier_points
-    pts[0].co = p0_co
-    pts[1].co = p1_co
-    pts[2].co = p2_co
-    pts[3].co = p3_co
-
-    for p in pts:
-        p.handle_left_type = p.handle_right_type = "FREE"
-        # Explicitly set handles to co to ensure zero length (sharp corner)
-        p.handle_left = p.co
-        p.handle_right = p.co
-
-    curve_obj = bpy.data.objects.new("Conveyor_Path", curve_data)
-    scene = bpy.context.scene
-    if scene and getattr(scene, "collection", None) is not None:
-        try:
-            scene.collection.objects.link(curve_obj)
-        except Exception:
-            pass
-
-    # Mark the curve as a path
-    curve_data.use_path = True
-    curve_data.path_duration = 500  # Slower belt for safe LEGO transport
-
-    # We do NOT animate eval_time on the curve anymore.
-    # Instead, we animate the offset_factor on the slats directly using Fixed Position.
-    # This avoids the issue with cyclic modifiers on the curve animation in Blender 5.0.
-
-    # Make the curve cyclic so the conveyor path is a loop
-    if spline:
-        try:
-            spline.use_cyclic_u = True
-        except Exception:
-            pass
-
-    # Put curve into conveyor collection
-    conveyor_collection = bpy.data.collections.get("conveyor_belt")
-    if conveyor_collection:
-        conveyor_collection.objects.link(curve_obj)
-        scene = bpy.context.scene
-        if scene and getattr(scene, "collection", None) is not None:
-            try:
-                scene.collection.objects.unlink(curve_obj)
-            except Exception:
-                pass
-
-    # Pre-calculate segment lengths for proper offset distribution
-    # The 4-point curve has very different segment lengths (long top/bottom, short ends)
-    spline = curve_data.splines[0]
-    pts = spline.bezier_points
-    n_pts = len(pts)
-
-    # Calculate world-space segment lengths
-    segment_lengths: list[float] = []
+    to_remove = []
+    for obj in bpy.data.objects:
+        if any(x in obj.name for x in ["Conveyor_", "Slat_", "Belt_"]):
+            to_remove.append(obj)
+    for obj in to_remove:
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+    print(f"✓ Cleared {len(to_remove)} conveyor objects")
+
+
+def create_conveyor_path() -> Tuple[List[Vector], List[float]]:
+    """Calculate control points for the conveyor belt loop.
+
+    The path forms a rectangle with 4 corners:
+    - Top surface: slats move from bucket toward end (carrying parts)
+    - End: slats transition to bottom (return path)
+    - Bottom surface: slats return toward bucket
+    - Start: slats transition back to top surface
+
+    Uses arc-length parameterization for uniform slat speed.
+
+    Returns:
+        Tuple of (control_points, cumulative_normalized_lengths)
+    """
+    # Path geometry from configuration
+    end_z = CONVEYOR_START_Z + CONVEYOR_RISE
+
+    # 4 corners of the loop (rectangular path)
+    p0 = Vector((CONVEYOR_START_X, 0, CONVEYOR_START_Z))  # Top-Start (inside bucket)
+    p1 = Vector((CONVEYOR_END_X, 0, end_z))  # Top-End
+    p2 = Vector((CONVEYOR_END_X, 0, end_z - SLAT_GAP))  # Bottom-End
+    p3 = Vector((CONVEYOR_START_X, 0, CONVEYOR_START_Z - SLAT_GAP))  # Bottom-Start
+
+    control_points = [p0, p1, p2, p3]
+
+    # Calculate segment lengths for arc-length parameterization
+    n_pts = len(control_points)
+    segment_lengths: List[float] = []
     for i in range(n_pts):
-        p0 = curve_obj.matrix_world @ pts[i].co
-        p1 = curve_obj.matrix_world @ pts[(i + 1) % n_pts].co
-        segment_lengths.append((p1 - p0).length)
+        p_start = control_points[i]
+        p_end = control_points[(i + 1) % n_pts]
+        segment_lengths.append((p_end - p_start).length)
 
     total_length = sum(segment_lengths)
 
-    # Create cumulative length array for offset mapping
-    cumulative_lengths = [0.0]
+    cumulative = [0.0]
     for sl in segment_lengths:
-        cumulative_lengths.append(cumulative_lengths[-1] + sl)
+        cumulative.append(cumulative[-1] + sl)
+    cumulative_normalized = [c / total_length for c in cumulative]
 
-    # Normalize to [0, 1]
-    cumulative_normalized = [cl / total_length for cl in cumulative_lengths]
+    print(f"  Path: X from {CONVEYOR_START_X:.2f} to {CONVEYOR_END_X:.2f}")
+    print(f"  Path: Z from {CONVEYOR_START_Z:.2f} to {end_z:.2f}")
+    print(f"  Path segments: {[f'{sl:.3f}m' for sl in segment_lengths]}")
+    print(f"  Total path length: {total_length:.3f}m")
 
-    print(f"  [Curve] Segment lengths: {[f'{sl:.3f}' for sl in segment_lengths]}")
-    print(
-        f"  [Curve] Total length: {total_length:.3f}, Cumulative: {[f'{cn:.3f}' for cn in cumulative_normalized]}"
-    )
+    return control_points, cumulative_normalized
 
-    def sample_curve_position(offset: float) -> Vector:
-        """Sample curve position at offset [0,1] distributed by actual path length."""
-        # Wrap offset to [0, 1)
-        offset = offset % 1.0
 
-        # Find which segment this offset falls into
-        seg_idx = 0
-        for i in range(n_pts):
-            if offset < cumulative_normalized[i + 1]:
-                seg_idx = i
-                break
-        else:
-            seg_idx = n_pts - 1
+def sample_path_position(
+    control_points: List[Vector],
+    cumulative_normalized: List[float],
+    offset: float,
+) -> Vector:
+    """Sample position along the path at given offset (0-1).
 
-        # Calculate local t within segment
-        seg_start = cumulative_normalized[seg_idx]
-        seg_end = cumulative_normalized[seg_idx + 1]
-        seg_range = seg_end - seg_start
+    Uses arc-length parameterization for uniform speed.
 
-        if seg_range > 0:
-            seg_t = (offset - seg_start) / seg_range
-        else:
-            seg_t = 0.0
+    Args:
+        control_points: List of path corner positions
+        cumulative_normalized: Normalized cumulative lengths
+        offset: Position along path (0=start, 1=full loop)
 
-        # Get the two adjacent control points
-        p0 = curve_obj.matrix_world @ pts[seg_idx].co
-        p1 = curve_obj.matrix_world @ pts[(seg_idx + 1) % n_pts].co
+    Returns:
+        World-space position Vector
+    """
+    offset = offset % 1.0
+    n_pts = len(control_points)
 
-        # Linear interpolation
-        return p0.lerp(p1, seg_t)
+    seg_idx = 0
+    for i in range(n_pts):
+        if offset < cumulative_normalized[i + 1]:
+            seg_idx = i
+            break
+    else:
+        seg_idx = n_pts - 1
 
-    # Helper to create a single slat (simplified: no constraint, direct keyframes)
-    def create_slat(name: str, start_offset_factor: float) -> Optional[Any]:
-        # Create at origin
-        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))
-        slat_obj = bpy.context.active_object
-        if slat_obj is None or not isinstance(slat_obj, Object):
-            return None
-        slat: Object = slat_obj
-        slat.name = name
+    seg_start = cumulative_normalized[seg_idx]
+    seg_end = cumulative_normalized[seg_idx + 1]
+    seg_range = seg_end - seg_start
+    seg_t = (offset - seg_start) / seg_range if seg_range > 0 else 0.0
 
-        # Size and orient the slat for reliable collisions
-        slat_length = max(length * 0.06, 0.05)
-        slat.scale = Vector((slat_length, width * 0.52, max(0.01, thickness * 0.4)))
-        slat.rotation_euler = conveyor.rotation_euler.copy()
-        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    p0 = control_points[seg_idx]
+    p1 = control_points[(seg_idx + 1) % n_pts]
 
-        # Material
-        slat_mat = ensure_material(
-            "Conveyor_Slat_Mat", (0.20, 0.40, 0.85, 1.0), roughness=0.5, metallic=0.05
-        )
-        assign_material(slat, slat_mat)
+    return p0.lerp(p1, seg_t)
 
-        # Rigid body: PASSIVE (kinematic) so animated motion pushes ACTIVE bodies
-        view_layer = bpy.context.view_layer
-        if view_layer is not None and getattr(view_layer, "objects", None) is not None:
-            try:
-                view_layer.objects.active = slat
-            except Exception:
-                pass
-        slat.select_set(True)
+
+# Conveyor incline angle (calculated from rise/run)
+# Negative because slats should tilt opposite to belt direction (perpendicular to surface)
+CONVEYOR_INCLINE_RAD = -math.atan2(CONVEYOR_RISE, CONVEYOR_END_X - CONVEYOR_START_X)
+
+
+def create_side_walls(conveyor_collection: Any) -> List[Any]:
+    """Create side walls to prevent LEGO parts from falling off the conveyor.
+
+    Walls start OUTSIDE the bucket (not inside) to avoid interfering with
+    guide ramps. Walls extend down to belt level with no gap.
+
+    Returns:
+        List of wall objects created
+    """
+    walls = []
+    wall_height = 0.18  # 18cm tall walls - from Z=0 to above top belt surface
+    wall_thickness = 0.005  # 5mm thick
+
+    # Walls start OUTSIDE the bucket to not interfere with guide ramps
+    # Bucket exit is around X=0.05, so start walls at X=0.06
+    wall_start_x = 0.06  # Start outside bucket
+    wall_end_x = CONVEYOR_END_X
+    wall_length = wall_end_x - wall_start_x
+    mid_x = (wall_start_x + wall_end_x) / 2
+
+    # Calculate Z position at the wall midpoint
+    # Wall needs to extend from ground level up to contain parts on all slat positions
+    # Slats move in a loop, so their Z varies. Wall bottom at Z=0 ensures no gaps.
+    # Wall bottom at Z=0, extend up to cover belt height + wall_height
+    wall_bottom_z = 0.0
+    mid_z = wall_bottom_z + wall_height / 2
+
+    # Y offset: at edge of slats plus half wall thickness
+    for side, y_offset in [
+        ("Left", SLAT_WIDTH / 2 + wall_thickness / 2),
+        ("Right", -SLAT_WIDTH / 2 - wall_thickness / 2),
+    ]:
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(mid_x, y_offset, mid_z))
+        wall = bpy.context.active_object
+        if not wall:
+            continue
+
+        wall.name = f"Conveyor_Wall_{side}"
+        wall.scale = (wall_length, wall_thickness, wall_height)
+        bpy.ops.object.transform_apply(scale=True)
+
+        # Set origin to geometry center to avoid double gizmo display
+        bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY", center="BOUNDS")
+
+        # No rotation - walls are vertical containment barriers
+        # They don't need to follow conveyor incline
+
+        # Setup rigid body
+        set_active(wall)
+        wall.select_set(True)
         bpy.ops.rigidbody.object_add(type="PASSIVE")
-        rb = slat.rigid_body
-        if rb is None:
-            raise Exception("Rigid body not assigned")
-
-        rb.collision_shape = "CONVEX_HULL"
-        rb.friction = 1.5
-        rb.restitution = 0.0
-        rb.use_deactivation = False
-        rb.kinematic = True
-        rb.use_margin = True
-        rb.collision_margin = 0.005  # 5mm margin prevents tunneling at low quality
-
-        # DIRECT KEYFRAME APPROACH: No constraint, just manually keyframe positions
-        # This avoids Blender 5.0 Follow Path constraint bugs in background mode
-        start_frame = 1
-        end_frame = 500  # 500 frames = slow, safe transport speed
-
-        for f in range(start_frame, end_frame + 1):
-            # Calculate offset at this frame (loops every 500 frames)
-            frame_offset = (start_offset_factor + (f - 1) / 500.0) % 1.0
-
-            # Get position on curve
-            pos = sample_curve_position(frame_offset)
-
-            # Set position and keyframe
-            slat.location = pos
-            slat.keyframe_insert(data_path="location", frame=f)
-
-        # Debug first slat
-        if name == "Conveyor_Slat_01":
-            p1 = sample_curve_position(start_offset_factor)
-            p250 = sample_curve_position((start_offset_factor + 249 / 500) % 1.0)
-            print(f"  [Slat01] Frame 1: pos={p1}, Frame 250: pos={p250}")
+        rb = wall.rigid_body
+        if rb:
+            rb.collision_shape = "BOX"
+            rb.friction = 0.5
+            rb.use_margin = True
+            rb.collision_margin = 0.001
+        wall.select_set(False)
 
         # Add to conveyor collection
-        if conveyor_collection and all(
-            o.name != slat.name for o in conveyor_collection.objects
-        ):
-            conveyor_collection.objects.link(slat)
-            scene = getattr(bpy.context, "scene", None)
-            if scene and getattr(scene, "collection", None) is not None:
-                try:
-                    scene.collection.objects.unlink(slat)
-                except Exception:
-                    pass
+        if conveyor_collection:
+            for coll in list(wall.users_collection):
+                coll.objects.unlink(wall)
+            conveyor_collection.objects.link(wall)
 
-        return slat
+        # Ensure wall is in RigidBodyWorld collection for physics
+        rbw_coll = bpy.data.collections.get("RigidBodyWorld")
+        if rbw_coll and wall.name not in [o.name for o in rbw_coll.objects]:
+            rbw_coll.objects.link(wall)
 
-    # Calculate number of slats needed to cover the path with no gaps
-    slat_length = max(length * 0.06, 0.05)
-    num_slats = max(10, int(total_length / slat_length))
+        walls.append(wall)
+
     print(
-        f"  [Slats] Length: {slat_length:.3f}, Count: {num_slats} (path: {total_length:.3f})"
+        f"✅ Created {len(walls)} side walls for conveyor (starting outside bucket at X={wall_start_x})"
     )
+    return walls
 
-    for i in range(num_slats):
-        offset = (i / num_slats) % 1.0
-        create_slat(f"Conveyor_Slat_{i + 1:02d}", offset)
 
-    print("✓ Created path-driven animated slats for friction transport")
+def create_bucket_guide_planes(conveyor_collection: Any) -> List[Any]:
+    """Create V-shaped ramp guides inside the bucket to funnel parts onto the belt.
+
+    Uses bmesh to create large wedge-shaped ramps that:
+    - Outer edge at bucket TOP radius (Y = ±0.12) to cover full bucket interior
+    - Inner edge at belt center (Y = ±0.01) to funnel parts precisely
+    - Extends from back of bucket to bucket exit
+    - Low friction for parts to slide easily onto slats
+
+    Returns:
+        List of guide plane objects created
+    """
+    import bmesh
+
+    guides = []
+
+    # Bucket dimensions - use TOP radius to cover full bucket interior
+    bucket_top_radius = 0.12  # 12cm - covers the full bucket opening
+
+    # Inner edge of ramps - very close to center to funnel all parts onto belt
+    # Belt is 8cm wide (±0.04), inner edges at ±0.01 create a 2cm landing strip
+    inner_edge_y = 0.01
+
+    # Ramp X extent - cover the entire bucket interior
+    x_start = CONVEYOR_START_X - 0.04  # Well behind bucket center
+    x_end = 0.05  # Stop at bucket exit (before side walls start)
+
+    # Heights - extend from bucket top to belt surface
+    z_top = 0.15  # At bucket top
+    z_bottom = CONVEYOR_START_Z  # At belt surface level
+
+    def create_wedge_ramp(name: str, y_outer: float, y_inner: float) -> Any:
+        """Create a thick wedge-shaped ramp using bmesh for solid collision."""
+        mesh = bpy.data.meshes.new(name)
+        obj = bpy.data.objects.new(name, mesh)
+
+        # Thickness of the ramp (perpendicular to the surface)
+        thickness = 0.02  # 2cm thick - solid enough to prevent tunneling
+
+        bm = bmesh.new()
+        # Create a solid wedge with 8 vertices (box with angled top)
+        # Top surface vertices
+        v1 = bm.verts.new((x_start, y_outer, z_top))  # Back, outer, top
+        v2 = bm.verts.new((x_start, y_inner, z_bottom))  # Back, inner, bottom
+        v3 = bm.verts.new((x_end, y_outer, z_top))  # Front, outer, top
+        v4 = bm.verts.new((x_end, y_inner, z_bottom))  # Front, inner, bottom
+
+        # Bottom surface vertices (offset down by thickness)
+        # For angled surface, offset perpendicular to surface
+        # Approximate by moving in -Z and slightly in Y direction
+        y_sign = 1 if y_outer > 0 else -1
+        v5 = bm.verts.new(
+            (x_start, y_outer - y_sign * thickness * 0.3, z_top - thickness)
+        )
+        v6 = bm.verts.new(
+            (x_start, y_inner - y_sign * thickness * 0.3, z_bottom - thickness)
+        )
+        v7 = bm.verts.new(
+            (x_end, y_outer - y_sign * thickness * 0.3, z_top - thickness)
+        )
+        v8 = bm.verts.new(
+            (x_end, y_inner - y_sign * thickness * 0.3, z_bottom - thickness)
+        )
+
+        # Create faces for solid box
+        bm.faces.new([v1, v3, v4, v2])  # Top surface
+        bm.faces.new([v5, v6, v8, v7])  # Bottom surface
+        bm.faces.new([v1, v2, v6, v5])  # Back face
+        bm.faces.new([v3, v7, v8, v4])  # Front face
+        bm.faces.new([v1, v5, v7, v3])  # Outer edge
+        bm.faces.new([v2, v4, v8, v6])  # Inner edge
+
+        bm.to_mesh(mesh)
+        bm.free()
+
+        # Link to scene - handle case where context.collection might be None
+        scene_coll = bpy.context.scene.collection  # type: ignore[union-attr]
+        scene_coll.objects.link(obj)
+
+        # Add to conveyor collection
+        if conveyor_collection:
+            for coll in list(obj.users_collection):
+                coll.objects.unlink(obj)
+            conveyor_collection.objects.link(obj)
+
+        # Add rigid body
+        set_active(obj)
+        obj.select_set(True)
+        bpy.ops.rigidbody.object_add(type="PASSIVE")
+        rb = obj.rigid_body
+        if rb:
+            rb.collision_shape = "CONVEX_HULL"  # More robust than MESH
+            rb.friction = 0.02  # Very low friction for sliding
+            rb.use_margin = True
+            rb.collision_margin = 0.005  # Larger margin prevents tunneling
+        obj.select_set(False)
+
+        # Add to RigidBodyWorld collection
+        rbw_coll = bpy.data.collections.get("RigidBodyWorld")
+        if rbw_coll and obj.name not in [o.name for o in rbw_coll.objects]:
+            rbw_coll.objects.link(obj)
+
+        # Apply material
+        guide_mat = ensure_material(
+            "Guide_Material",
+            (0.35, 0.35, 0.4, 1.0),
+            roughness=0.05,
+            metallic=0.2,
+        )
+        assign_material(obj, guide_mat)
+
+        return obj
+
+    # Create left ramp: outer at bucket top radius, inner near belt center
+    left_ramp = create_wedge_ramp(
+        "Bucket_Guide_Ramp_Left", bucket_top_radius, inner_edge_y
+    )
+    guides.append(left_ramp)
+
+    # Create right ramp: outer at bucket top radius, inner near belt center
+    right_ramp = create_wedge_ramp(
+        "Bucket_Guide_Ramp_Right", -bucket_top_radius, -inner_edge_y
+    )
+    guides.append(right_ramp)
+
+    # Note: Bucket_Guide_Back was removed - not needed as parts flow naturally
+
+    print(
+        f"✅ Created {len(guides)} bucket guide ramps (full bucket funnel to 2cm landing strip)"
+    )
+    return guides
+
+
+def create_slat(
+    name: str,
+    control_points: List[Vector],
+    cumulative_normalized: List[float],
+    start_offset: float,
+    conveyor_collection: Any,
+) -> Optional[Any]:
+    """Create a single animated slat that follows the conveyor path.
+
+    Args:
+        name: Name for the slat object
+        control_points: Path corner positions
+        cumulative_normalized: Arc-length parameterization
+        start_offset: Initial position on path (0-1)
+        conveyor_collection: Collection to add slat to
+
+    Returns:
+        The created slat object
+    """
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))
+    slat = bpy.context.active_object
+    if not slat:
+        return None
+
+    slat.name = name
+    # Scale to slat dimensions: thickness (X), width (Y), height (Z)
+    # primitive_cube size=1 creates 1x1x1 cube, scale directly to desired size
+    slat.scale = (SLAT_THICKNESS, SLAT_WIDTH, SLAT_HEIGHT)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+    # Rotate slat to match conveyor incline
+    slat.rotation_euler.y = CONVEYOR_INCLINE_RAD
+
+    slat_mat = ensure_material(
+        "Slat_Material",
+        (0.25, 0.45, 0.85, 1.0),  # Blue color
+        roughness=0.5,
+        metallic=0.1,
+    )
+    assign_material(slat, slat_mat)
+
+    # Add kinematic rigid body for physics interaction
+    set_active(slat)
+    slat.select_set(True)
+    bpy.ops.rigidbody.object_add(type="PASSIVE")
+    rb = slat.rigid_body
+    if rb:
+        rb.collision_shape = "BOX"
+        rb.friction = 3.0  # Very high friction to grip LEGO parts
+        rb.restitution = 0.0
+        rb.kinematic = True
+        rb.use_margin = True
+        rb.collision_margin = 0.002
+    slat.select_set(False)
+
+    # Direct keyframe animation - keyframe for every frame
+    for frame in range(1, ANIMATION_FRAMES + 1):
+        frame_offset = (start_offset + (frame - 1) / ANIMATION_FRAMES) % 1.0
+        pos = sample_path_position(control_points, cumulative_normalized, frame_offset)
+        slat.location = pos
+        slat.keyframe_insert(data_path="location", frame=frame)
+
+    # Set LINEAR interpolation for mechanical motion
+    if slat.animation_data and slat.animation_data.action:
+        action = slat.animation_data.action
+        # Blender 5.0 API uses layers/strips/channelbags
+        if hasattr(action, "layers"):
+            for layer in action.layers:
+                for strip in layer.strips:
+                    for channelbag in strip.channelbags:  # type: ignore[attr-defined]
+                        for fcurve in channelbag.fcurves:
+                            for kf in fcurve.keyframe_points:
+                                kf.interpolation = "LINEAR"
+        # Fallback for older Blender versions
+        elif hasattr(action, "fcurves"):
+            for fcurve in action.fcurves:
+                for kf in fcurve.keyframe_points:
+                    kf.interpolation = "LINEAR"
+
+    # Add to collection
+    if conveyor_collection:
+        for coll in list(slat.users_collection):
+            coll.objects.unlink(slat)
+        conveyor_collection.objects.link(slat)
+
+    # Ensure slat is in RigidBodyWorld collection for physics
+    rbw_coll = bpy.data.collections.get("RigidBodyWorld")
+    if rbw_coll and slat.name not in [o.name for o in rbw_coll.objects]:
+        rbw_coll.objects.link(slat)
+
+    return slat
 
 
 def main() -> None:
-    """Main function to create the complete conveyor belt system."""
-    print("🏗️ Creating conveyor belt system...")
+    """Main function to create the conveyor belt system."""
+    print("=" * 60)
+    print("🏗️  Creating Conveyor Belt with Path-Driven Slats")
+    print("=" * 60)
 
-    # Clear any existing conveyor
-    clear_existing_conveyor()
+    scene = bpy.context.scene
+    if scene:
+        scene.frame_set(1)
+
+    # Clear existing conveyor objects
+    clear_conveyor_objects()
 
     # Create collection
-    conveyor_collection = create_conveyor_collection()
+    conveyor_collection = ensure_collection("conveyor_belt")
 
-    # Create the main conveyor belt
-    conveyor = create_conveyor_belt()
+    # Calculate path control points (no visible curve object)
+    control_points, cumulative_normalized = create_conveyor_path()
 
-    if conveyor and conveyor_collection:
-        # Move conveyor to collection
-        conveyor_collection.objects.link(conveyor)
-    scene = bpy.context.scene
-    if scene and getattr(scene, "collection", None) is not None:
-        try:
-            scene.collection.objects.unlink(conveyor)
-        except Exception:
-            pass
+    # Calculate total path length
+    total_length = sum(
+        (control_points[(i + 1) % len(control_points)] - control_points[i]).length
+        for i in range(len(control_points))
+    )
 
-    # Add details (kept) and skip decorative supports/rollers
-    add_conveyor_details(conveyor)
+    print(f"\n  Creating {SLAT_COUNT} slats...")
 
-    # Setup physics and animation
-    setup_conveyor_physics(conveyor)
-    # Visual motion on material (optional) and physical slats for actual transport
-    setup_conveyor_animation(conveyor)
-    setup_friction_based_conveyor(conveyor)
+    # Create slats evenly distributed around the path
+    slats = []
+    for i in range(SLAT_COUNT):
+        offset = i / SLAT_COUNT
+        slat = create_slat(
+            f"Slat_{i:02d}",
+            control_points,
+            cumulative_normalized,
+            offset,
+            conveyor_collection,
+        )
+        if slat:
+            slats.append(slat)
 
-    # Create hole in bucket
-    create_bucket_hole()
-    # Remove the decorative Conveyor_Belt mesh object so only the path and slats remain
-    try:
-        conveyor_collection = bpy.data.collections.get("conveyor_belt")
-        # Remove any object named exactly 'Conveyor_Belt'
-        belt_obj = bpy.data.objects.get("Conveyor_Belt")
-        if belt_obj:
-            # Unlink from collection if present
-            try:
-                if conveyor_collection and belt_obj.name in conveyor_collection.objects:
-                    conveyor_collection.objects.unlink(belt_obj)
-            except Exception:
-                pass
-            # Remove the object from the blend entirely
-            try:
-                bpy.data.objects.remove(belt_obj, do_unlink=True)
-                print(
-                    "✓ Removed decorative Conveyor_Belt object, preserving path and slats"
-                )
-            except Exception:
-                pass
+    # Create side walls to prevent parts from falling off
+    walls = create_side_walls(conveyor_collection)
 
-        # Prune any other non-path/non-slat objects from the conveyor collection to ensure collection contains only the path and slats
-        if conveyor_collection:
-            for obj in list(conveyor_collection.objects):
-                if not (
-                    obj.name == "Conveyor_Path" or obj.name.startswith("Conveyor_Slat_")
-                ):
-                    try:
-                        # Unlink and remove to keep collection minimal
-                        conveyor_collection.objects.unlink(obj)
-                        bpy.data.objects.remove(obj, do_unlink=True)
-                    except Exception:
-                        # If removal fails, at least unlink it
-                        try:
-                            conveyor_collection.objects.unlink(obj)
-                        except Exception:
-                            pass
-    except Exception:
-        pass
+    # Create guide planes inside bucket to funnel parts onto belt
+    guides = create_bucket_guide_planes(conveyor_collection)
 
-    print("🎉 Conveyor belt system created successfully!")
-    print("🔄 Using enhanced collision physics for part transport")
-    print("✓ Conveyor properly positioned to connect with bucket hole")
-    print("▶️ Press Space to start physics simulation")
+    # Reset to frame 1
+    if scene:
+        scene.frame_set(1)
+
+    print("\n" + "=" * 60)
+    print("✅ Conveyor belt created successfully!")
+    print(f"   Path length: {total_length:.2f}m")
+    print(f"   {len(slats)} animated slats (looping)")
+    print(f"   {len(walls)} side walls (at slat level)")
+    print(f"   {len(guides)} bucket guide planes (funneling)")
+    print(f"   Animation: {ANIMATION_FRAMES} frames per cycle")
+    print(f"   Belt starts INSIDE bucket for parts to fall onto slats")
+    print("=" * 60)
 
 
-# Execute the script
+# Execute
 main()

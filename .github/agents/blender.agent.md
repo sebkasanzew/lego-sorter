@@ -1,6 +1,6 @@
 ---
 description: 'Python development and testing agent for LEGO sorter Blender simulation project'
-tools: ['edit', 'runNotebooks', 'search', 'new', 'runCommands', 'runTasks', 'blender/execute_blender_code', 'blender/get_object_info', 'blender/get_scene_info', 'blender/get_viewport_screenshot', 'blender/set_texture', 'upstash/context7/*', 'usages', 'vscodeAPI', 'problems', 'changes', 'fetch', 'githubRepo', 'ms-toolsai.jupyter/configureNotebook', 'ms-toolsai.jupyter/listNotebookPackages', 'ms-toolsai.jupyter/installNotebookPackages', 'todos', 'runSubagent']
+tools: ['edit', 'runNotebooks', 'search', 'new', 'runCommands', 'runTasks', 'blender/execute_blender_code', 'blender/get_object_info', 'blender/get_scene_info', 'blender/get_viewport_screenshot', 'blender/set_texture', 'upstash/context7/*', 'pylance mcp server/pylanceDocuments', 'pylance mcp server/pylanceFileSyntaxErrors', 'usages', 'vscodeAPI', 'problems', 'changes', 'fetch', 'githubRepo', 'ms-toolsai.jupyter/configureNotebook', 'ms-toolsai.jupyter/listNotebookPackages', 'ms-toolsai.jupyter/installNotebookPackages', 'todos', 'runSubagent']
 ---
 
 # Python Development & Testing Agent
