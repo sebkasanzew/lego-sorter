@@ -33,8 +33,8 @@ BUCKET_HEIGHT = 0.18  # 18cm tall
 WALL_THICKNESS = 0.008  # 8mm walls
 
 # Exit opening dimensions (LARGE for parts to exit onto conveyor)
-EXIT_WIDTH = 0.10  # 10cm wide (fits multiple LEGO bricks)
-EXIT_HEIGHT = 0.08  # 8cm tall (large opening for parts to fall through)
+EXIT_WIDTH = 0.08  # 14cm wide (fits larger LEGO bricks)
+EXIT_HEIGHT = 0.12  # 12cm tall (large opening for parts to fall through)
 EXIT_Z_OFFSET = 0.01  # 1cm above bucket bottom
 
 # Gate/slider dimensions (slides VERTICALLY)
@@ -194,9 +194,38 @@ def create_bucket() -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
     bpy.ops.object.mode_set(mode="OBJECT")
     bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY", center="MEDIAN")
 
-    # Apply material
+    # Apply smooth shading only for angles > 150 degrees (30 degree threshold)
+    # This keeps sharp edges on the bucket rim while smoothing the curved walls
+    mesh_data = bucket.data
+    if isinstance(mesh_data, bpy.types.Mesh):
+        # Enable smooth shading on all faces
+        for poly in mesh_data.polygons:
+            poly.use_smooth = True
+
+        # Mark sharp edges based on angle (Blender 4.1+: use edge marks)
+        # For angles < 30 degrees between faces, mark edge as sharp
+        import math
+
+        bpy.ops.object.mode_set(mode="EDIT")
+        bm = bmesh.from_edit_mesh(mesh_data)
+
+        angle_threshold = math.radians(30)  # Edges sharper than 30° marked sharp
+        for edge in bm.edges:
+            if len(edge.link_faces) == 2:
+                angle = edge.calc_face_angle()
+                if angle is not None and angle > angle_threshold:
+                    edge.smooth = False  # Mark as sharp
+                else:
+                    edge.smooth = True
+
+        bmesh.update_edit_mesh(mesh_data)
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+    print("✅ Applied smooth shading (>150° angles only)")
+
+    # Apply material - darker gray for better contrast with LEGO parts
     bucket_mat = ensure_material(
-        "Bucket_Material", (0.7, 0.7, 0.75, 1.0), roughness=0.4, metallic=0.3
+        "Bucket_Material", (0.35, 0.35, 0.38, 1.0), roughness=0.6, metallic=0.1
     )
     assign_material(bucket, bucket_mat)
 

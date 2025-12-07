@@ -178,10 +178,10 @@ def setup_physics_world() -> None:
     rbw = scene.rigidbody_world
     if rbw is not None:
         rbw.time_scale = 1.0
-        rbw.substeps_per_frame = 80  # High for small objects
-        rbw.solver_iterations = 80  # High for accurate collision
+        rbw.substeps_per_frame = 120  # Very high for small LEGO parts
+        rbw.solver_iterations = 100  # High for accurate collision detection
 
-    print("✅ Physics world configured with high precision settings")
+    print("✅ Physics world configured with very high precision settings")
 
 
 def setup_bucket_physics() -> Optional[Any]:
@@ -229,7 +229,7 @@ def setup_bucket_physics() -> Optional[Any]:
 
 
 # TODO: add proper types for parameter
-def setup_lego_part_physics(obj: Any) -> None:
+def setup_lego_part_physics(obj: bpy.types.Object) -> None:
     """Setup physics properties for a single LEGO part"""
     if not obj:
         return
@@ -253,9 +253,7 @@ def setup_lego_part_physics(obj: Any) -> None:
         )
 
     # Collision shape: BOX is fastest, CONVEX_HULL is good balance, MESH is most accurate
-    rb.collision_shape = (
-        "CONVEX_HULL"  # "BOX" Fast for development; change to CONVEX_HULL for accuracy
-    )
+    rb.collision_shape = "CONVEX_HULL"
 
     # Set realistic LEGO properties
     rb.mass = 0.002
@@ -269,9 +267,9 @@ def setup_lego_part_physics(obj: Any) -> None:
     # Enable the object for physics simulation
     rb.enabled = True
 
-    # Add collision margin to prevent tunneling at low quality settings
+    # Add collision margin to prevent tunneling
     rb.use_margin = True
-    rb.collision_margin = 0.002  # 2mm margin
+    rb.collision_margin = 0.005  # 5mm margin - larger to prevent tunneling
 
     print(f"✅ Physics setup for LEGO part: {obj.name}")
 
@@ -320,25 +318,26 @@ def position_parts_above_bucket(lego_parts: List[Any]) -> None:
         print("❌ No bucket found - positioning parts at default height")
         bucket_top_z = 0.5  # Default height
 
-    # Position parts in a grid above the bucket
-    import math
+    # Position parts in a vertical column above the bucket center
+    # All parts spawn at the same X/Y (bucket center) with increasing Z
+    import random
 
-    grid_size = math.ceil(math.sqrt(len(lego_parts)))
-    spacing = 0.05  # 5cm spacing between parts
-    start_x = -(grid_size - 1) * spacing / 2
-    start_y = -(grid_size - 1) * spacing / 2
+    # Bucket center position
+    bucket_center_x = 0.02
+    bucket_center_y = 0.0
+    spawn_radius = 0.03  # Small random spread within bucket opening
 
     for i, part in enumerate(lego_parts):
         if not part:
             continue
 
-        # Calculate grid position
-        row = i // grid_size
-        col = i % grid_size
+        # Random position within small radius of bucket center
+        x_offset = random.uniform(-spawn_radius, spawn_radius)  # noqa: S311
+        y_offset = random.uniform(-spawn_radius, spawn_radius)  # noqa: S311
 
-        # Set position above the bucket
-        part.location.x = start_x + col * spacing
-        part.location.y = start_y + row * spacing
+        # Set position above the bucket - all parts in vertical column
+        part.location.x = bucket_center_x + x_offset
+        part.location.y = bucket_center_y + y_offset
         part.location.z = bucket_top_z + (i * 0.02)  # Stack with 2cm between each part
 
         # Clear any existing keyframes (only if they exist)
@@ -350,7 +349,7 @@ def position_parts_above_bucket(lego_parts: List[Any]) -> None:
             pass  # No keyframes to delete, which is fine
 
     print(
-        f"✅ Positioned {len(lego_parts)} parts above the bucket at height {bucket_top_z:.2f}m"
+        f"✅ Positioned {len(lego_parts)} parts above bucket center at height {bucket_top_z:.2f}m"
     )
 
 
@@ -485,7 +484,7 @@ def start_physics_simulation() -> None:
         raise RuntimeError("No active scene found; cannot start physics simulation")
 
     scene.frame_start = 1
-    scene.frame_end = 100  # limit animation to 100 frames
+    scene.frame_end = 500  # Extended animation for full simulation
     scene.frame_set(1)
 
     # Ensure rigid body world exists (use context-aware helper)
@@ -496,10 +495,10 @@ def start_physics_simulation() -> None:
     rbw = scene.rigidbody_world
     if rbw:
         rbw.point_cache.frame_start = 1
-        rbw.point_cache.frame_end = 100
-        # Simulation quality (lower = faster, higher = more accurate)
-        rbw.substeps_per_frame = 5
-        rbw.solver_iterations = 10
+        rbw.point_cache.frame_end = 500
+        # Simulation quality - high values prevent objects falling through
+        rbw.substeps_per_frame = 120  # Very high for small LEGO parts
+        rbw.solver_iterations = 100  # High for accurate collision
 
     # Update the scene to ensure physics is ready
     view_layer = bpy.context.view_layer
@@ -569,19 +568,39 @@ def main() -> None:
     for part in lego_parts:
         setup_lego_part_physics(part)
 
-    # Assign unique, deterministic colors to each LEGO part to aid debugging
+    # Preserve existing LEGO colors from import_lego_parts.py
+    # Only assign debug colors to parts that don't have a LEGO material
     try:
+        assigned_count = 0
         total = max(1, len(lego_parts))
         for i, part in enumerate(lego_parts):
-            h = float(i) / float(total)
-            rgba = hsv_to_rgba(h, 0.7, 0.9)
-            mat = ensure_material(
-                f"LEGO_Part_Mat_{i:03d}", color_rgba=rgba, roughness=0.35
+            # Check if part already has a LEGO color material
+            has_lego_color = False
+            # Guard access to .materials to satisfy static type checkers
+            if part.type == "MESH" and part.data and getattr(part.data, "materials", None):
+                for mat in getattr(part.data, "materials", []):
+                    if mat and mat.name.startswith("LEGO_Color_"):
+                        has_lego_color = True
+                        break
+
+            # Only assign debug color if no LEGO color exists
+            if not has_lego_color:
+                h = float(i) / float(total)
+                rgba = hsv_to_rgba(h, 0.7, 0.9)
+                mat = ensure_material(
+                    f"LEGO_Part_Mat_{i:03d}", color_rgba=rgba, roughness=0.35
+                )
+                assign_material(part, mat)
+                assigned_count += 1
+
+        if assigned_count > 0:
+            print(
+                f"✅ Assigned debug colors to {assigned_count} parts without LEGO colors"
             )
-            assign_material(part, mat)
-        print(f"\u2705 Assigned unique colors to {len(lego_parts)} LEGO parts")
+        else:
+            print(f"✅ Preserved LEGO colors on all {len(lego_parts)} parts")
     except Exception:
-        print("\u26a0\ufe0f Failed to assign per-part colors (continuing)")
+        print("⚠️ Failed to check/assign part colors (continuing)")
 
     # Position parts above the bucket so they can fall
     position_parts_above_bucket(lego_parts)

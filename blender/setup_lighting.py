@@ -131,7 +131,8 @@ def main() -> None:
     col = get_or_create_collection("lighting")
     clear_collection_objects("lighting")
 
-    setup_world_ambient(strength=0.2, color=(0.9, 0.95, 1.0))
+    # Lower ambient for more contrast and deeper shadows
+    setup_world_ambient(strength=0.05, color=(0.15, 0.18, 0.22))
 
     # Estimate scene center and scale from known objects if available
     bucket = bpy.data.objects.get("Sorting_Bucket")
@@ -140,34 +141,41 @@ def main() -> None:
         center = bucket.location.copy()
         center.z += 0.2
 
-    # Key light (overhead, angled)
+    # Key light (overhead, angled) - stronger for contrast
     key = add_area_light(
         name="Key_Light",
         location=center + Vector((0.8, -0.8, 1.2)),
         rotation=(1.2, 0.0, 0.8),
-        size=0.8,
-        power_watts=220.0,
+        size=0.5,  # Smaller for sharper shadows
+        power_watts=350.0,  # Stronger main light
     )
-    # Fill light (opposite side, softer)
+    # Fill light (opposite side, much softer for shadow contrast)
     fill = add_area_light(
         name="Fill_Light",
         location=center + Vector((-0.9, 0.8, 0.9)),
         rotation=(1.3, 0.0, -2.2),
-        size=1.0,
-        power_watts=120.0,
-        color=(0.95, 0.98, 1.0),
+        size=1.2,
+        power_watts=40.0,  # Much weaker fill for more contrast
+        color=(0.85, 0.9, 1.0),
     )
-    # Rim light (back light to add separation)
+    # Rim light (back light to add separation) - stronger
     rim = add_area_light(
         name="Rim_Light",
         location=center + Vector((0.0, -1.2, 1.3)),
         rotation=(1.5, 0.0, 0.0),
-        size=0.6,
-        power_watts=120.0,
+        size=0.4,
+        power_watts=180.0,
     )
 
     for obj in (key, fill, rim):
         col.objects.link(obj)
+        # Ensure not in scene collection (only in lighting collection)
+        scene = bpy.context.scene
+        if scene and scene.collection and obj.name in scene.collection.objects:
+            try:
+                scene.collection.objects.unlink(obj)
+            except Exception:
+                pass
 
     print("✅ Lighting setup complete")
 

@@ -255,8 +255,8 @@ def create_side_walls(conveyor_collection: Any) -> List[Any]:
     wall_thickness = 0.005  # 5mm thick
 
     # Walls start OUTSIDE the bucket to not interfere with guide ramps
-    # Bucket exit is around X=0.05, so start walls at X=0.06
-    wall_start_x = 0.06  # Start outside bucket
+    # Bucket exit is around X=0.05, so start walls at X=0.069
+    wall_start_x = 0.069  # Start outside bucket
     wall_end_x = CONVEYOR_END_X
     wall_length = wall_end_x - wall_start_x
     mid_x = (wall_start_x + wall_end_x) / 2
@@ -300,6 +300,15 @@ def create_side_walls(conveyor_collection: Any) -> List[Any]:
             rb.collision_margin = 0.001
         wall.select_set(False)
 
+        # Make wall invisible in render (but visible in viewport for physics)
+        wall.hide_render = True
+        wall.visible_camera = False
+        wall.visible_diffuse = False
+        wall.visible_glossy = False
+        wall.visible_transmission = False
+        wall.visible_volume_scatter = False
+        wall.visible_shadow = False
+
         # Add to conveyor collection
         if conveyor_collection:
             for coll in list(wall.users_collection):
@@ -339,12 +348,12 @@ def create_bucket_guide_planes(conveyor_collection: Any) -> List[Any]:
     bucket_top_radius = 0.12  # 12cm - covers the full bucket opening
 
     # Inner edge of ramps - very close to center to funnel all parts onto belt
-    # Belt is 8cm wide (±0.04), inner edges at ±0.01 create a 2cm landing strip
-    inner_edge_y = 0.01
+    # Belt is 8cm wide (±0.04), inner edges at ±0.004 create a 0.8cm landing strip
+    inner_edge_y = 0.004
 
     # Ramp X extent - cover the entire bucket interior
-    x_start = CONVEYOR_START_X - 0.04  # Well behind bucket center
-    x_end = 0.05  # Stop at bucket exit (before side walls start)
+    x_start = -0.10  # Back of bucket area
+    x_end = 0.09  # Extend further past bucket exit
 
     # Heights - extend from bucket top to belt surface
     z_top = 0.15  # At bucket top
@@ -421,12 +430,12 @@ def create_bucket_guide_planes(conveyor_collection: Any) -> List[Any]:
         if rbw_coll and obj.name not in [o.name for o in rbw_coll.objects]:
             rbw_coll.objects.link(obj)
 
-        # Apply material
+        # Apply material - darker for contrast
         guide_mat = ensure_material(
             "Guide_Material",
-            (0.35, 0.35, 0.4, 1.0),
-            roughness=0.05,
-            metallic=0.2,
+            (0.25, 0.25, 0.28, 1.0),
+            roughness=0.6,
+            metallic=0.1,
         )
         assign_material(obj, guide_mat)
 
@@ -487,9 +496,9 @@ def create_slat(
 
     slat_mat = ensure_material(
         "Slat_Material",
-        (0.25, 0.45, 0.85, 1.0),  # Blue color
-        roughness=0.5,
-        metallic=0.1,
+        (0.18, 0.18, 0.20, 1.0),  # Dark gray for contrast
+        roughness=0.7,
+        metallic=0.0,
     )
     assign_material(slat, slat_mat)
 

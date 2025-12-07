@@ -122,13 +122,16 @@ def setup_verification_cameras() -> list:
     if cam_bucket:
         cameras.append(cam_bucket)
 
-    # Add all cameras to collection
+    # Add all cameras to collection and hide from viewport
     for cam in cameras:
         for coll in list(cam.users_collection):
             coll.objects.unlink(cam)
         collection.objects.link(cam)
+        # Hide camera from viewport (still usable for rendering)
+        cam.hide_viewport = True
+        cam.hide_set(True)  # Hide in outliner too
 
-    print(f"✅ Created {len(cameras)} verification cameras:")
+    print(f"✅ Created {len(cameras)} verification cameras (hidden from viewport):")
     for cam in cameras:
         print(f"   - {cam.name}")
 

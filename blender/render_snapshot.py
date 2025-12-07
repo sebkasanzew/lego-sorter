@@ -271,15 +271,16 @@ def configure_render(output_path: str) -> None:
         raise RuntimeError("No active scene found; cannot configure render")
     ensure_dir(os.path.dirname(output_path))
 
-    # Use Eevee Next explicitly for latest Blender versions
+    # Use Eevee for rendering (handle different Blender versions)
     try:
         cast(Any, scene.render).engine = "BLENDER_EEVEE_NEXT"
         print("[render_snapshot] Using render engine: BLENDER_EEVEE_NEXT")
-    except Exception as exc:
-        raise RuntimeError(
-            "Failed to set render engine to BLENDER_EEVEE_NEXT. "
-            "Ensure you're on a Blender version that supports Eevee Next."
-        ) from exc
+    except Exception:
+        try:
+            cast(Any, scene.render).engine = "BLENDER_EEVEE"
+            print("[render_snapshot] Using render engine: BLENDER_EEVEE")
+        except Exception as exc:
+            raise RuntimeError("Failed to set render engine to Eevee. ") from exc
 
     if scene.camera is None:
         raise RuntimeError("No camera set in the scene; cannot render")
@@ -297,6 +298,54 @@ def configure_render(output_path: str) -> None:
     scene.render.resolution_y = 1080
     scene.render.resolution_percentage = 100
     scene.render.filepath = output_path
+
+    # Enhanced render settings for better contrast and shadows (Blender 5.0+)
+    eevee = cast(Any, scene.eevee)
+    try:
+        # Shadows
+        eevee.use_shadows = True
+        eevee.shadow_ray_count = 3
+        eevee.shadow_step_count = 16
+        eevee.shadow_resolution_scale = 2.0
+    except Exception:
+        pass
+    try:
+        # Fast GI (replaces old GTAO in Blender 5.0)
+        eevee.use_fast_gi = True
+        eevee.fast_gi_method = "GLOBAL_ILLUMINATION"
+        eevee.fast_gi_quality = 0.5
+        eevee.fast_gi_ray_count = 4
+        eevee.fast_gi_step_count = 16
+        eevee.fast_gi_distance = 0.3
+    except Exception:
+        # Fallback for older Blender versions with GTAO
+        try:
+            eevee.use_gtao = True
+            eevee.gtao_distance = 0.3
+            eevee.gtao_factor = 1.5
+        except Exception:
+            pass
+    try:
+        # Higher quality sampling
+        eevee.taa_render_samples = 128
+        eevee.taa_samples = 32
+    except Exception:
+        pass
+    try:
+        # Clamping for contrast
+        eevee.clamp_surface_indirect = 5.0
+    except Exception:
+        pass
+
+    # Color management for more contrast
+    view_settings = cast(Any, scene.view_settings)
+    try:
+        view_settings.view_transform = "Filmic"
+        view_settings.look = "High Contrast"
+        view_settings.exposure = 0.5
+        view_settings.gamma = 1.0
+    except Exception:
+        pass
 
 
 def _project_bounds_onto_plane(dims: Vector, view_dir: Vector) -> tuple[float, float]:
